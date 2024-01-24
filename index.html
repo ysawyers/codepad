@@ -5,15 +5,21 @@
     <title>codepad</title>
   </head>
   <body>
-    <div class="main-container">
-      <!-- sidebar -->
-      <div></div>
+    <div style="display: flex; flex-direction: column; height: 100vh; width: 100vw">
+      <!-- all open files -->
+      <header id="tab-group" class="tabs-container"></header>
 
-      <!-- editor -->
+      <!-- figure out a better name instead of "main group" -->
+      <div id="main-group" class="main-container">
+        <div></div>
+      </div>
+    </div>
+
+    <template id="editor">
       <div class="editor-container">
-        <div class="line-numbers-column">
-          <div id="line-number-group" class="line-number-container">
-            <div id="line-number-0" class="line-number">1</div>
+        <div id="line-number-group" class="line-numbers-column">
+          <div id="line-number-0" class="line-number-container">
+            <span class="line-number">1</span>
           </div>
         </div>
 
@@ -21,10 +27,16 @@
           <div id="line-0" class="line"></div>
         </div>
       </div>
-    </div>
+    </template>
 
     <template id="cursor">
       <div class="cursor"></div>
+    </template>
+
+    <template id="tab">
+      <div class="tab">
+        <span class="tab-name" />
+      </div>
     </template>
 
     <script type="module" src="/src/renderer.ts"></script>

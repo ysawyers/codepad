@@ -9,11 +9,33 @@ body {
   display: block;
 }
 
+.tabs-container {
+  display: flex;
+  flex-direction: row;
+  background-color: #181818;
+}
+
+.tab {
+  color: white;
+  background-color: #1f1f1f;
+  width: fit-content;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 2em;
+  padding-right: 2em;
+  border-top: 2px solid #0078d4;
+  border-right: 1px solid #2b2b2b;
+}
+
+.tab-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .main-container {
   display: flex;
   flex-direction: row;
-  width: 100vw;
-  height: 100vh;
+  flex-grow: 1;
 }
 
 .editor-container {
@@ -22,7 +44,7 @@ body {
   flex-direction: row;
   height: 100%;
   flex-grow: 1;
-  background-color: #1b1b1d;
+  background-color: #1f1f1f;
 }
 
 .line-container {
@@ -33,39 +55,34 @@ body {
   cursor: text;
 }
 
-.line-numbers-column {
-  width: 3.5em;
-  border-right: 1px solid white;
-}
-
 .line {
   position: relative;
   display: block;
   height: 1em;
 }
 
-.line-cursor {
-  /* width: 100%; */
+.line-numbers-column {
+  width: 3.5em;
 }
 
 .line-number-container {
   display: flex;
-  flex-direction: column;
+  margin: auto;
+  width: 80%;
+  text-align: center;
+  color: white;
   height: 1em;
-  width: 100%;
 }
 
 .line-number {
   margin: auto;
-  width: 80%;
   font-size: 13px;
-  text-align: center;
-  color: white;
+  color: #6e7681;
 }
 
 .cursor {
   position: absolute;
   width: 1.5px;
   height: 1em;
-  background-color: white;
+  background-color: #0078d4;
 }
