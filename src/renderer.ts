@@ -1,8 +1,72 @@
 import "./index.css";
+import fs from "node:fs";
 
+class Enviornment {
+  // maps the tab element to the cursor for quick deletion
+  cursors: Map<HTMLElement, Cursor>;
+  foregroundedTab: HTMLElement | null;
+
+  constructor() {
+    this.cursors = new Map<HTMLElement, Cursor>();
+    this.foregroundedTab = null;
+
+    this.openTab("untitled-0", null);
+    this.openTab("untitled-1", null);
+    this.openTab("untitled-2", null);
+    this.openTab("untitled-3", null);
+  }
+
+  openTab(fileName: string, existingTab: HTMLElement | null) {
+    // if there is a tab already open, close it
+    if (this.foregroundedTab) {
+      const prevTabCursor = this.cursors.get(this.foregroundedTab);
+      prevTabCursor.background();
+    }
+
+    // if the tab being opened doesn't exist, create it
+    let newTab: HTMLElement | null = null;
+    if (!existingTab) {
+      // @ts-ignore
+      const tabCopy = document.getElementById("tab").content.cloneNode(true);
+      newTab = tabCopy.firstElementChild as HTMLElement;
+      newTab.firstElementChild.textContent = fileName;
+
+      // attatch event listener to close tab
+      (newTab.lastElementChild as HTMLElement).addEventListener("click", () => {
+        this.closeTab(newTab);
+      });
+
+      const tabs = document.getElementById("tab-group");
+      tabs.appendChild(newTab);
+    }
+
+    if (newTab) {
+      const newTabCursor = new Cursor(0, 0, null);
+      this.cursors.set(newTab, newTabCursor);
+      this.foregroundedTab = newTab;
+      newTabCursor.foreground();
+    } else {
+      const currentTabCursor = this.cursors.get(existingTab);
+      this.foregroundedTab = existingTab;
+      currentTabCursor.foreground();
+    }
+  }
+
+  // TODO: Cover edge case if clearing out all tabs!
+  closeTab(existingTab: HTMLElement) {
+    this.cursors.delete(existingTab);
+    existingTab.remove();
+  }
+}
+
+// manages the cursor that navigates each file.
 class Cursor {
-  private cursorEl: HTMLElement;
-  private editorFragment: DocumentFragment;
+  private editorReal: HTMLElement;
+  private editorVirtual: DocumentFragment;
+
+  // since no mutations are made on the cursor specifically mutations directly to the DOM is fine.
+  private cursorReal: HTMLElement;
+
   file: File;
   row: number;
   col: number;
@@ -12,58 +76,57 @@ class Cursor {
     this.col = col;
     this.file = new File(filePath);
     // @ts-ignore
-    this.editorFragment = document.getElementById("editor").content;
-
-    const line = this.editorFragment.getElementById(`line-${row}`);
+    this.editorVirtual = document.getElementById("editor").content.cloneNode(true);
+    const line = this.editorVirtual.getElementById(`line-${row}`);
     this.renderCursor(line);
-    this.propogateChangesToDOM();
 
-    window.addEventListener("keydown", (e) => {
-      switch (e.key) {
-        case "ArrowUp":
-          if (this.row > 0) {
-            this.row -= 1;
-          }
-          break;
-        case "ArrowDown":
-          this.row += 1;
-          break;
-        case "ArrowLeft":
-          break;
-        case "ArrowRight":
-          break;
-        case "Backspace":
-          break;
-        case "Enter":
-          this.renderLine();
-          this.row += 1;
-          break;
-        default:
-          break;
+    document.addEventListener("keydown", (e) => {
+      if (this.editorReal.isConnected) {
+        switch (e.key) {
+          case "ArrowUp":
+            if (this.row > 0) this.row -= 1;
+            break;
+          case "ArrowDown":
+            if (document.getElementById("line-group").children.length > this.row + 1) this.row++;
+            break;
+          case "ArrowLeft":
+            break;
+          case "ArrowRight":
+            break;
+          case "Backspace":
+            break;
+          case "Enter":
+            this.renderLine();
+            this.row++;
+            break;
+          default:
+            break;
+        }
+
+        const newLine = this.editorVirtual.getElementById(`line-${this.row}`);
+        this.renderCursor(newLine);
+        this.repaint();
       }
-
-      const newLine = this.editorFragment.getElementById(`line-${this.row}`);
-      this.renderCursor(newLine);
-      this.propogateChangesToDOM();
     });
   }
 
-  // copies cursor "component" and appends to virtual DOM
-  renderCursor(line: HTMLElement) {
-    if (this.cursorEl) {
-      this.cursorEl.remove();
-    }
+  private renderCursor(line: HTMLElement) {
+    // removes the cursor that currently resides on the real DOM for the new cursor being drawn onto the virtual DOM
+    if (this.cursorReal) this.cursorReal.remove();
+
     // @ts-ignore
-    this.cursorEl = document.getElementById("cursor").content.firstElementChild.cloneNode(true);
-    line.appendChild(this.cursorEl);
+    this.cursorReal = document.getElementById("cursor").content.firstElementChild.cloneNode(true);
+    line.appendChild(this.cursorReal);
   }
 
-  renderLine() {
-    const lines = this.editorFragment.getElementById("line-group");
+  private renderLine() {
+    const lines = this.editorVirtual.getElementById("line-group");
+
+    // we only want to clone the container of the line but not the contents to the new line!
     const newLine = lines.lastElementChild.cloneNode(false) as HTMLElement;
     newLine.id = `line-${parseInt(newLine.id.split("-")[1]) + 1}`;
 
-    const lineNumbers = this.editorFragment.getElementById("line-number-group");
+    const lineNumbers = this.editorVirtual.getElementById("line-number-group");
     const newLineNumber = lineNumbers.lastElementChild.cloneNode(true) as HTMLElement;
     newLineNumber.id = `line-number-${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
     newLineNumber.firstElementChild.textContent = `${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
@@ -72,43 +135,26 @@ class Cursor {
     lineNumbers.appendChild(newLineNumber);
   }
 
-  left() {}
+  private repaint() {
+    const parent = document.getElementById("main-group");
+    if (this.editorReal) this.editorReal.remove();
+    this.editorReal = this.editorVirtual.firstElementChild.cloneNode(true) as HTMLElement;
+    parent.appendChild(this.editorReal);
+  }
 
-  right() {}
+  foreground() {
+    this.repaint();
+  }
 
-  downAndNewLine() {}
-
-  propogateChangesToDOM() {
-    const realDOM = document.getElementById("main-group");
-    // written assuming main-group will only contain 2 children.
-    if (realDOM.children.length > 1) {
-      realDOM.replaceChild(this.editorFragment.cloneNode(true), realDOM.children[1]);
-    } else {
-      realDOM.appendChild(this.editorFragment.cloneNode(true));
-    }
+  // cursor is "backgrounded" by default
+  background() {
+    this.editorReal.remove();
   }
 }
 
+// data for each file
 class File {
-  private tabRef: HTMLDivElement;
-
-  constructor(filePath: string | null) {
-    if (filePath === null) {
-      this.renderTab("Untitled-1");
-    } else {
-      // handle parsing the actual file
-    }
-  }
-
-  renderTab(fileName: string) {
-    // @ts-ignore
-    const tabDeepClone = document.getElementById("tab").content.cloneNode(true);
-    const tabRef = tabDeepClone.firstElementChild;
-    tabRef.firstElementChild.textContent = fileName;
-    const tabs = document.getElementById("tab-group");
-    tabs.appendChild(tabRef);
-    this.tabRef = tabRef;
-  }
+  constructor(filePath: string | null) {}
 }
 
-let c1 = new Cursor(0, 0, null);
+new Enviornment();
