@@ -1,5 +1,4 @@
 import "./index.css";
-import fs from "node:fs";
 
 class Enviornment {
   // maps the tab element to the cursor for quick deletion
@@ -12,8 +11,8 @@ class Enviornment {
 
     this.openTab("untitled-0", null);
     this.openTab("untitled-1", null);
-    this.openTab("untitled-2", null);
-    this.openTab("untitled-3", null);
+    // this.openTab("untitled-2", null);
+    // this.openTab("untitled-3", null);
   }
 
   openTab(fileName: string, existingTab: HTMLElement | null) {
@@ -54,7 +53,7 @@ class Enviornment {
 
   // TODO: Cover edge case if clearing out all tabs!
   closeTab(existingTab: HTMLElement) {
-    this.cursors.delete(existingTab);
+    this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
     existingTab.remove();
   }
 }
@@ -63,8 +62,6 @@ class Enviornment {
 class Cursor {
   private editorReal: HTMLElement;
   private editorVirtual: DocumentFragment;
-
-  // since no mutations are made on the cursor specifically mutations directly to the DOM is fine.
   private cursorReal: HTMLElement;
 
   file: File;
@@ -84,23 +81,64 @@ class Cursor {
       if (this.editorReal.isConnected) {
         switch (e.key) {
           case "ArrowUp":
-            if (this.row > 0) this.row -= 1;
+            if (this.row > 0) this.navigateUp();
             break;
+
           case "ArrowDown":
-            if (document.getElementById("line-group").children.length > this.row + 1) this.row++;
+            const linesContainer = document.getElementById("line-group");
+            if (linesContainer.children.length > this.row + 1) this.navigateDown();
             break;
+
           case "ArrowLeft":
+            if (this.col > 0) this.col--;
             break;
+
           case "ArrowRight":
+            {
+              const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
+              if (this.col < currentLine.firstElementChild.textContent.length) this.col++;
+            }
             break;
+
+          case "Tab":
+            {
+              const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
+              // CONSTANT TAB LENGTH: 4
+              for (let i = 0; i < 4; i++) {
+                currentLine.firstElementChild.textContent += "\xa0";
+                this.col++;
+              }
+            }
+            break;
+
           case "Backspace":
+            {
+              const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
+              if (currentLine.firstElementChild.textContent.length) {
+                currentLine.firstElementChild.textContent =
+                  currentLine.firstElementChild.textContent.slice(0, -1);
+                this.col--;
+              }
+            }
             break;
+
+          case "Shift":
+            break;
+
+          case "Meta":
+            break;
+
           case "Enter":
             this.renderLine();
             this.row++;
+            this.col = 0;
             break;
-          default:
-            break;
+
+          default: {
+            const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
+            currentLine.firstElementChild.textContent += e.key === " " ? "\xa0" : e.key;
+            this.col++;
+          }
         }
 
         const newLine = this.editorVirtual.getElementById(`line-${this.row}`);
@@ -110,20 +148,32 @@ class Cursor {
     });
   }
 
-  private renderCursor(line: HTMLElement) {
-    // removes the cursor that currently resides on the real DOM for the new cursor being drawn onto the virtual DOM
-    if (this.cursorReal) this.cursorReal.remove();
+  private navigateUp() {
+    this.row--;
+  }
 
+  private navigateDown() {
+    this.row++;
+  }
+
+  private renderCursor(line: HTMLElement) {
+    if (this.cursorReal) this.cursorReal.remove();
     // @ts-ignore
     this.cursorReal = document.getElementById("cursor").content.firstElementChild.cloneNode(true);
+    this.cursorReal.style.marginLeft = `${this.col * 9.6}px`;
     line.appendChild(this.cursorReal);
   }
 
   private renderLine() {
     const lines = this.editorVirtual.getElementById("line-group");
 
-    // we only want to clone the container of the line but not the contents to the new line!
-    const newLine = lines.lastElementChild.cloneNode(false) as HTMLElement;
+    // EDGE CASE: Since the last element of the group is the one being copied it may/may not contain cursor
+    const newLine = lines.lastElementChild.cloneNode(true) as HTMLElement;
+    if (newLine.children.length > 1) {
+      newLine.lastElementChild.remove();
+    }
+
+    newLine.firstElementChild.textContent = "";
     newLine.id = `line-${parseInt(newLine.id.split("-")[1]) + 1}`;
 
     const lineNumbers = this.editorVirtual.getElementById("line-number-group");
@@ -152,9 +202,21 @@ class Cursor {
   }
 }
 
-// data for each file
+// inherintly implements rope data structure
 class File {
-  constructor(filePath: string | null) {}
+  data: string;
+
+  constructor(filePath: string | null) {
+    this.data = "";
+
+    if (filePath) {
+      // // data structure!
+      // (async () => {
+      //   const res = (await fetch("example.txt")).text();
+      //   const buffer = await res;
+      // })();
+    }
+  }
 }
 
 new Enviornment();
