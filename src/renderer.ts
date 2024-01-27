@@ -53,8 +53,11 @@ class Enviornment {
 
   // TODO: Cover edge case if clearing out all tabs! (UI NOT BUILT YET.)
   closeTab(existingTab: HTMLElement) {
-    this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
+    const cursor = this.cursors.get(existingTab);
+    cursor.background();
+
     existingTab.remove();
+    this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
   }
 }
 
@@ -88,7 +91,7 @@ class Cursor {
             break;
 
           case "ArrowDown":
-            const linesContainer = document.getElementById("line-group");
+            const linesContainer = this.editorVirtual.getElementById("line-group");
             if (linesContainer.children.length > this.row + 1) this.navigateDown();
             break;
 
@@ -135,6 +138,8 @@ class Cursor {
                   currentLine.domNode.firstElementChild.textContent = updatedTextContent;
                   this.col--;
                 }
+              } else {
+                console.log("delete this entire node");
               }
             }
             break;
@@ -167,12 +172,22 @@ class Cursor {
     });
   }
 
+  // make navigate up more polished.
   private navigateUp() {
     this.row--;
+    const previousLine = this.file.getCurrentLine(this.row);
+    if (previousLine.text.length < this.col) {
+      this.col = previousLine.text.length;
+    }
   }
 
+  // make navigate down more polished
   private navigateDown() {
     this.row++;
+    const nextLine = this.file.getCurrentLine(this.row);
+    if (nextLine.text.length < this.col) {
+      this.col = nextLine.text.length;
+    }
   }
 
   private renderCursor(line: HTMLElement) {
@@ -296,11 +311,22 @@ class File {
 
   // returns the text that should start on the new line
   createNewLine(fromLine: number, textOverflow: string): string {
-    const currentLine = this.getCurrentLine(fromLine);
-    const newNode = new LineNode(textOverflow, currentLine.next);
+    const prevLine = this.getCurrentLine(fromLine);
+
+    // removes the overflowed text that was removed from the previous line
+    prevLine.text = prevLine.text.slice(0, prevLine.text.length - textOverflow.length);
+
+    // adds the overflowed text to the new line
+    const newNode = new LineNode(textOverflow, prevLine.next);
+
     newNode.domNode.firstElementChild.textContent = textOverflow;
-    currentLine.next = newNode;
+    prevLine.next = newNode;
     return textOverflow;
+  }
+
+  // TO IMPLEMENT!
+  removeCurrentLine(line: number) {
+    console.log();
   }
 
   // chain nodes together by \n and return the entire content of the new modified file
