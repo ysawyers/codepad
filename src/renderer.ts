@@ -3,10 +3,12 @@ import "./index.css";
 class Enviornment {
   // maps the tab element to the cursor for quick deletion
   cursors: Map<HTMLElement, Cursor>;
+  tabPrecendence: HTMLElement[];
   foregroundedTab: HTMLElement | null;
 
   constructor() {
     this.cursors = new Map<HTMLElement, Cursor>();
+    this.tabPrecendence = [];
     this.foregroundedTab = null;
 
     this.openTab("untitled-0", null);
@@ -39,6 +41,8 @@ class Enviornment {
       tabs.appendChild(newTab);
     }
 
+    this.tabPrecendence.push(newTab || existingTab);
+
     if (newTab) {
       const newTabCursor = new Cursor(0, 0, "");
       this.cursors.set(newTab, newTabCursor);
@@ -51,13 +55,25 @@ class Enviornment {
     }
   }
 
-  // TODO: Cover edge case if clearing out all tabs! (UI NOT BUILT YET.)
   closeTab(existingTab: HTMLElement) {
     const cursor = this.cursors.get(existingTab);
     cursor.background();
-
     existingTab.remove();
     this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
+
+    this.tabPrecendence.pop();
+
+    // if there are still tabs left fallback on the next most recent one selected
+    if (this.tabPrecendence.length) {
+      let tabFallback = this.tabPrecendence.pop();
+      // EDGE CASE: If there are tabs that have already been deleted in the stack, ignore and remove
+      while (!this.cursors.get(tabFallback)) {
+        tabFallback = this.tabPrecendence.pop();
+      }
+      const cursor = this.cursors.get(tabFallback);
+
+      cursor.foreground();
+    }
   }
 }
 
@@ -70,6 +86,7 @@ class Cursor {
   file: File;
   row: number;
   col: number;
+  currentLine: LineNode;
 
   constructor(row: number, col: number, fileText: string) {
     this.row = row;
@@ -78,8 +95,8 @@ class Cursor {
     // @ts-ignore
     this.editorVirtual = document.getElementById("editor").content.cloneNode(true);
 
-    const newLine = this.file.getCurrentLine(this.row).domNode;
-    this.renderCursor(newLine);
+    this.currentLine = this.file.getCurrentLine(this.row);
+    this.renderCursor(this.currentLine.domNode);
     this.updateLinesVirtual();
     this.repaint();
 
@@ -101,18 +118,15 @@ class Cursor {
 
           case "ArrowRight":
             {
-              const currentLine = this.file.getCurrentLine(this.row).domNode;
-              if (this.col < currentLine.firstElementChild.textContent.length) this.col++;
+              if (this.col < this.currentLine.text.length) this.col++;
             }
             break;
 
           case "Tab": // CONSTANT TAB LENGTH: 4
             {
-              const currentLine = this.file.getCurrentLine(this.row);
-
               for (let i = 0; i < 4; i++) {
-                currentLine.domNode.firstElementChild.textContent += "\xa0";
-                this.file.insertCharacter(this.row, this.col, " ");
+                this.currentLine.domNode.firstElementChild.textContent += "\xa0";
+                this.file.insertCharacter(this.currentLine, this.col, " ");
                 this.col++;
               }
             }
@@ -120,8 +134,7 @@ class Cursor {
 
           case "Backspace":
             {
-              const currentLine = this.file.getCurrentLine(this.row);
-              const lineText = currentLine.domNode.firstElementChild.textContent;
+              const lineText = this.currentLine.domNode.firstElementChild.textContent;
               const lineLength = lineText.length;
 
               if (lineLength) {
@@ -129,28 +142,33 @@ class Cursor {
                 const tabWhitespace = "\xa0\xa0\xa0\xa0";
                 if (lineText.slice(lineLength - 4, lineLength) === tabWhitespace) {
                   for (let i = 0; i < 4; i++) {
-                    const updatedTextContent = this.file.deleteCharacter(this.row, this.col);
-                    currentLine.domNode.firstElementChild.textContent = updatedTextContent;
+                    const updatedTextContent = this.file.deleteCharacter(
+                      this.currentLine,
+                      this.col
+                    );
+                    this.currentLine.domNode.firstElementChild.textContent = updatedTextContent;
                     this.col--;
                   }
                 } else {
-                  const updatedTextContent = this.file.deleteCharacter(this.row, this.col);
-                  currentLine.domNode.firstElementChild.textContent = updatedTextContent;
+                  const updatedTextContent = this.file.deleteCharacter(this.currentLine, this.col);
+                  this.currentLine.domNode.firstElementChild.textContent = updatedTextContent;
                   this.col--;
                 }
               } else {
-                console.log("delete this entire node");
+                console.log("move line up!");
               }
             }
             break;
 
           case "Shift":
+            this.file.removeCurrentLine(0);
             break;
 
           case "Meta":
             break;
 
           case "Enter":
+            // TODO: Combine logic into 1 function
             this.renderNewLine();
             this.updateLinesVirtual();
             this.row++;
@@ -158,15 +176,13 @@ class Cursor {
             break;
 
           default: {
-            const currentLine = this.file.getCurrentLine(this.row).domNode;
-            const updatedTextContent = this.file.insertCharacter(this.row, this.col, e.key);
-            currentLine.firstElementChild.textContent = updatedTextContent;
+            const updatedTextContent = this.file.insertCharacter(this.currentLine, this.col, e.key);
+            this.currentLine.domNode.firstElementChild.textContent = updatedTextContent;
             this.col++;
           }
         }
 
-        const newLine = this.file.getCurrentLine(this.row).domNode;
-        this.renderCursor(newLine);
+        this.renderCursor(this.currentLine.domNode);
         this.repaint();
       }
     });
@@ -175,18 +191,18 @@ class Cursor {
   // make navigate up more polished.
   private navigateUp() {
     this.row--;
-    const previousLine = this.file.getCurrentLine(this.row);
-    if (previousLine.text.length < this.col) {
-      this.col = previousLine.text.length;
+    this.currentLine = this.currentLine.prev;
+    if (this.currentLine.text.length < this.col) {
+      this.col = this.currentLine.text.length;
     }
   }
 
   // make navigate down more polished
   private navigateDown() {
     this.row++;
-    const nextLine = this.file.getCurrentLine(this.row);
-    if (nextLine.text.length < this.col) {
-      this.col = nextLine.text.length;
+    this.currentLine = this.currentLine.next;
+    if (this.currentLine.text.length < this.col) {
+      this.col = this.currentLine.text.length;
     }
   }
 
@@ -207,7 +223,8 @@ class Cursor {
     // remove all the text after the cursor on the previous line (being copied to the line after)
     prevLine.firstElementChild.textContent = prevLineText.slice(0, this.col);
 
-    this.file.createNewLine(this.row, prevLineText.slice(this.col));
+    this.file.createNewLine(this.currentLine, prevLineText.slice(this.col));
+    this.currentLine = this.currentLine.next;
 
     const lineNumbers = this.editorVirtual.getElementById("line-number-group");
     const newLineNumber = lineNumbers.lastElementChild.cloneNode(true) as HTMLElement;
@@ -251,13 +268,15 @@ class Cursor {
 }
 
 class LineNode {
-  text: string;
-  next: LineNode | null;
   domNode: HTMLElement;
+  text: string;
+  prev: LineNode | null;
+  next: LineNode | null;
 
-  constructor(text: string, next: LineNode | null) {
+  constructor(text: string, next: LineNode | null, prev: LineNode | null) {
     this.text = text;
     this.next = next;
+    this.prev = prev;
 
     // @ts-ignore
     this.domNode = document.getElementById("line").content.firstElementChild.cloneNode(true);
@@ -268,7 +287,7 @@ class File {
   head: LineNode;
 
   constructor(fileText: string) {
-    this.head = new LineNode("", null); // line-0
+    this.head = new LineNode("", null, null); // line-0
 
     let curr = this.head;
     let buffer = "";
@@ -277,7 +296,7 @@ class File {
       const currentChar = fileText[i];
 
       if (currentChar === "\n") {
-        curr.next = new LineNode(buffer, null);
+        curr.next = new LineNode(buffer, null, curr);
         curr = curr.next;
         buffer = "";
       } else {
@@ -286,7 +305,6 @@ class File {
     }
   }
 
-  // TODO: Add cache so we are not constantly creating looping through
   getCurrentLine(line: number): LineNode {
     let currentLine = this.head;
     for (let i = 0; i < line; i++) {
@@ -296,42 +314,44 @@ class File {
   }
 
   // line-0 is first node
-  insertCharacter(line: number, col: number, ch: string): string {
-    const currentLine = this.getCurrentLine(line);
+  insertCharacter(line: LineNode, col: number, ch: string): string {
     const val = ch === " " ? "\xa0" : ch;
-    currentLine.text = currentLine.text.slice(0, col) + val + currentLine.text.slice(col);
-    return currentLine.text;
+    line.text = line.text.slice(0, col) + val + line.text.slice(col);
+    return line.text;
   }
 
-  deleteCharacter(line: number, col: number): string {
-    const currentLine = this.getCurrentLine(line);
-    currentLine.text = currentLine.text.slice(0, col - 1) + currentLine.text.slice(col);
-    return currentLine.text;
+  deleteCharacter(line: LineNode, col: number): string {
+    line.text = line.text.slice(0, col - 1) + line.text.slice(col);
+    return line.text;
   }
 
   // returns the text that should start on the new line
-  createNewLine(fromLine: number, textOverflow: string): string {
-    const prevLine = this.getCurrentLine(fromLine);
-
+  createNewLine(fromLine: LineNode, textOverflow: string): string {
     // removes the overflowed text that was removed from the previous line
-    prevLine.text = prevLine.text.slice(0, prevLine.text.length - textOverflow.length);
+    fromLine.text = fromLine.text.slice(0, fromLine.text.length - textOverflow.length);
 
     // adds the overflowed text to the new line
-    const newNode = new LineNode(textOverflow, prevLine.next);
+    const newNode = new LineNode(textOverflow, fromLine.next, fromLine);
 
     newNode.domNode.firstElementChild.textContent = textOverflow;
-    prevLine.next = newNode;
+    fromLine.next = newNode;
     return textOverflow;
   }
 
-  // TO IMPLEMENT!
-  removeCurrentLine(line: number) {
-    console.log();
-  }
+  removeCurrentLine(line: number) {}
 
   // chain nodes together by \n and return the entire content of the new modified file
-  saveFile(): string {
-    return "";
+  readFileState(): string {
+    let file = "";
+
+    let curr = this.head;
+    while (curr) {
+      file += curr.text;
+      file += "\n";
+      curr = curr.next;
+    }
+
+    return file;
   }
 }
 
