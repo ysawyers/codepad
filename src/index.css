@@ -61,8 +61,11 @@ body {
   height: 1em;
 }
 
-.line-numbers-column {
-  width: 3.5em;
+.default-line-text {
+  position: absolute;
+  color: white;
+  font-family: "DM Mono", monospace;
+  font-size: 13px;
 }
 
 .line-number-container {
@@ -78,6 +81,10 @@ body {
   margin: auto;
   font-size: 13px;
   color: #6e7681;
+}
+
+.line-numbers-column {
+  width: 3.5em;
 }
 
 .cursor {

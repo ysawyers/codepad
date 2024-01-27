@@ -40,7 +40,7 @@ class Enviornment {
     }
 
     if (newTab) {
-      const newTabCursor = new Cursor(0, 0, null);
+      const newTabCursor = new Cursor(0, 0, "");
       this.cursors.set(newTab, newTabCursor);
       this.foregroundedTab = newTab;
       newTabCursor.foreground();
@@ -51,7 +51,7 @@ class Enviornment {
     }
   }
 
-  // TODO: Cover edge case if clearing out all tabs!
+  // TODO: Cover edge case if clearing out all tabs! (UI NOT BUILT YET.)
   closeTab(existingTab: HTMLElement) {
     this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
     existingTab.remove();
@@ -68,14 +68,17 @@ class Cursor {
   row: number;
   col: number;
 
-  constructor(row: number, col: number, filePath: string | null) {
+  constructor(row: number, col: number, fileText: string) {
     this.row = row;
     this.col = col;
-    this.file = new File(filePath);
+    this.file = new File(fileText);
     // @ts-ignore
     this.editorVirtual = document.getElementById("editor").content.cloneNode(true);
-    const line = this.editorVirtual.getElementById(`line-${row}`);
-    this.renderCursor(line);
+
+    const newLine = this.file.getCurrentLine(this.row).domNode;
+    this.renderCursor(newLine);
+    this.updateLinesVirtual();
+    this.repaint();
 
     document.addEventListener("keydown", (e) => {
       if (this.editorReal.isConnected) {
@@ -95,17 +98,18 @@ class Cursor {
 
           case "ArrowRight":
             {
-              const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
+              const currentLine = this.file.getCurrentLine(this.row).domNode;
               if (this.col < currentLine.firstElementChild.textContent.length) this.col++;
             }
             break;
 
-          case "Tab":
+          case "Tab": // CONSTANT TAB LENGTH: 4
             {
-              const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
-              // CONSTANT TAB LENGTH: 4
+              const currentLine = this.file.getCurrentLine(this.row);
+
               for (let i = 0; i < 4; i++) {
-                currentLine.firstElementChild.textContent += "\xa0";
+                currentLine.domNode.firstElementChild.textContent += "\xa0";
+                this.file.insertCharacter(this.row, this.col, " ");
                 this.col++;
               }
             }
@@ -113,11 +117,24 @@ class Cursor {
 
           case "Backspace":
             {
-              const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
-              if (currentLine.firstElementChild.textContent.length) {
-                currentLine.firstElementChild.textContent =
-                  currentLine.firstElementChild.textContent.slice(0, -1);
-                this.col--;
+              const currentLine = this.file.getCurrentLine(this.row);
+              const lineText = currentLine.domNode.firstElementChild.textContent;
+              const lineLength = lineText.length;
+
+              if (lineLength) {
+                // assumes 4 spaces == tab
+                const tabWhitespace = "\xa0\xa0\xa0\xa0";
+                if (lineText.slice(lineLength - 4, lineLength) === tabWhitespace) {
+                  for (let i = 0; i < 4; i++) {
+                    const updatedTextContent = this.file.deleteCharacter(this.row, this.col);
+                    currentLine.domNode.firstElementChild.textContent = updatedTextContent;
+                    this.col--;
+                  }
+                } else {
+                  const updatedTextContent = this.file.deleteCharacter(this.row, this.col);
+                  currentLine.domNode.firstElementChild.textContent = updatedTextContent;
+                  this.col--;
+                }
               }
             }
             break;
@@ -129,19 +146,21 @@ class Cursor {
             break;
 
           case "Enter":
-            this.renderLine();
+            this.renderNewLine();
+            this.updateLinesVirtual();
             this.row++;
             this.col = 0;
             break;
 
           default: {
-            const currentLine = this.editorVirtual.getElementById(`line-${this.row}`);
-            currentLine.firstElementChild.textContent += e.key === " " ? "\xa0" : e.key;
+            const currentLine = this.file.getCurrentLine(this.row).domNode;
+            const updatedTextContent = this.file.insertCharacter(this.row, this.col, e.key);
+            currentLine.firstElementChild.textContent = updatedTextContent;
             this.col++;
           }
         }
 
-        const newLine = this.editorVirtual.getElementById(`line-${this.row}`);
+        const newLine = this.file.getCurrentLine(this.row).domNode;
         this.renderCursor(newLine);
         this.repaint();
       }
@@ -160,29 +179,43 @@ class Cursor {
     if (this.cursorReal) this.cursorReal.remove();
     // @ts-ignore
     this.cursorReal = document.getElementById("cursor").content.firstElementChild.cloneNode(true);
-    this.cursorReal.style.marginLeft = `${this.col * 9.6}px`;
+    this.cursorReal.style.marginLeft = `${this.col * 7.8}px`;
     line.appendChild(this.cursorReal);
   }
 
-  private renderLine() {
-    const lines = this.editorVirtual.getElementById("line-group");
+  private renderNewLine() {
+    const lines = this.editorVirtual.getElementById("line-group").children;
 
-    // EDGE CASE: Since the last element of the group is the one being copied it may/may not contain cursor
-    const newLine = lines.lastElementChild.cloneNode(true) as HTMLElement;
-    if (newLine.children.length > 1) {
-      newLine.lastElementChild.remove();
-    }
+    const prevLine = lines.item(this.row);
+    const prevLineText = prevLine.firstElementChild.textContent;
 
-    newLine.firstElementChild.textContent = "";
-    newLine.id = `line-${parseInt(newLine.id.split("-")[1]) + 1}`;
+    // remove all the text after the cursor on the previous line (being copied to the line after)
+    prevLine.firstElementChild.textContent = prevLineText.slice(0, this.col);
+
+    this.file.createNewLine(this.row, prevLineText.slice(this.col));
 
     const lineNumbers = this.editorVirtual.getElementById("line-number-group");
     const newLineNumber = lineNumbers.lastElementChild.cloneNode(true) as HTMLElement;
     newLineNumber.id = `line-number-${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
     newLineNumber.firstElementChild.textContent = `${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
 
-    lines.appendChild(newLine);
     lineNumbers.appendChild(newLineNumber);
+  }
+
+  private updateLinesVirtual() {
+    const group = this.editorVirtual.getElementById("line-group");
+
+    // remove all the nodes on the DOM since it is out of order
+    while (group.firstElementChild) {
+      group.removeChild(group.lastElementChild);
+    }
+
+    // repopulate the line nodes in order
+    let curr = this.file.head;
+    while (curr) {
+      group.appendChild(curr.domNode);
+      curr = curr.next;
+    }
   }
 
   private repaint() {
@@ -202,20 +235,77 @@ class Cursor {
   }
 }
 
-// inherintly implements rope data structure
+class LineNode {
+  text: string;
+  next: LineNode | null;
+  domNode: HTMLElement;
+
+  constructor(text: string, next: LineNode | null) {
+    this.text = text;
+    this.next = next;
+
+    // @ts-ignore
+    this.domNode = document.getElementById("line").content.firstElementChild.cloneNode(true);
+  }
+}
+
 class File {
-  data: string;
+  head: LineNode;
 
-  constructor(filePath: string | null) {
-    this.data = "";
+  constructor(fileText: string) {
+    this.head = new LineNode("", null); // line-0
 
-    if (filePath) {
-      // // data structure!
-      // (async () => {
-      //   const res = (await fetch("example.txt")).text();
-      //   const buffer = await res;
-      // })();
+    let curr = this.head;
+    let buffer = "";
+
+    for (let i = 0; i < fileText.length; i++) {
+      const currentChar = fileText[i];
+
+      if (currentChar === "\n") {
+        curr.next = new LineNode(buffer, null);
+        curr = curr.next;
+        buffer = "";
+      } else {
+        buffer += currentChar;
+      }
     }
+  }
+
+  // TODO: Add cache so we are not constantly creating looping through
+  getCurrentLine(line: number): LineNode {
+    let currentLine = this.head;
+    for (let i = 0; i < line; i++) {
+      currentLine = currentLine.next;
+    }
+    return currentLine;
+  }
+
+  // line-0 is first node
+  insertCharacter(line: number, col: number, ch: string): string {
+    const currentLine = this.getCurrentLine(line);
+    const val = ch === " " ? "\xa0" : ch;
+    currentLine.text = currentLine.text.slice(0, col) + val + currentLine.text.slice(col);
+    return currentLine.text;
+  }
+
+  deleteCharacter(line: number, col: number): string {
+    const currentLine = this.getCurrentLine(line);
+    currentLine.text = currentLine.text.slice(0, col - 1) + currentLine.text.slice(col);
+    return currentLine.text;
+  }
+
+  // returns the text that should start on the new line
+  createNewLine(fromLine: number, textOverflow: string): string {
+    const currentLine = this.getCurrentLine(fromLine);
+    const newNode = new LineNode(textOverflow, currentLine.next);
+    newNode.domNode.firstElementChild.textContent = textOverflow;
+    currentLine.next = newNode;
+    return textOverflow;
+  }
+
+  // chain nodes together by \n and return the entire content of the new modified file
+  saveFile(): string {
+    return "";
   }
 }
 
