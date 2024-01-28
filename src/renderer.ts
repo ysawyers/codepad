@@ -62,16 +62,20 @@ class Enviornment {
     existingTab.remove();
     this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
 
-    this.tabPrecendence.pop();
-
     // if there are still tabs left fallback on the next most recent one selected
     if (this.tabPrecendence.length) {
+      this.tabPrecendence.pop();
+
+      console.log(this.tabPrecendence);
+
       let tabFallback = this.tabPrecendence.pop();
       // EDGE CASE: If there are tabs that have already been deleted in the stack, ignore and remove
-      while (!this.cursors.get(tabFallback)) {
+      while (!this.cursors.get(tabFallback) && this.tabPrecendence.length) {
         tabFallback = this.tabPrecendence.pop();
       }
       const cursor = this.cursors.get(tabFallback);
+
+      console.log(cursor);
 
       cursor.foreground();
     }
@@ -99,7 +103,6 @@ class Cursor {
     this.updateCurrentLine(this.file.getCurrentLine(this.row));
     this.renderCursor(this.currentLine);
     this.updateLineOrdering();
-    this.repaint();
 
     // REFACTOR: MEMORY LEAK: A DELETED CURSOR DOES NOT HAVE THEIR EVENT LISTENER REMOVED FROM DOCUMENT?
     document.addEventListener("keydown", (e) => {
@@ -127,8 +130,8 @@ class Cursor {
           case "Tab": // CONSTANT TAB LENGTH: 4
             {
               for (let i = 0; i < 4; i++) {
-                this.currentLine.domNode.firstElementChild.textContent += "\xa0";
-                this.file.insertCharacter(this.currentLine, this.col, " ");
+                const textContent = this.file.insertCharacter(this.currentLine, this.col, " ");
+                this.currentLine.vLineEl.firstElementChild.textContent = textContent;
                 this.navigateRight();
               }
             }
@@ -136,24 +139,24 @@ class Cursor {
 
           case "Backspace":
             {
-              const lineText = this.currentLine.domNode.firstElementChild.textContent;
+              const lineText = this.currentLine.vLineEl.firstElementChild.textContent;
               const lineLength = lineText.length;
 
-              if (col != 0) {
+              if (this.col != 0) {
                 // assumes 4 spaces == tab
                 const tabWhitespace = "\xa0\xa0\xa0\xa0";
                 if (lineText.slice(lineLength - 4, lineLength) === tabWhitespace) {
                   for (let i = 0; i < 4; i++) {
                     const textContent = this.file.deleteCharacter(this.currentLine, this.col);
-                    this.currentLine.domNode.firstElementChild.textContent = textContent;
+                    this.currentLine.vLineEl.firstElementChild.textContent = textContent;
                     this.navigateLeft();
                   }
                 } else {
                   const textContent = this.file.deleteCharacter(this.currentLine, this.col);
-                  this.currentLine.domNode.firstElementChild.textContent = textContent;
+                  this.currentLine.vLineEl.firstElementChild.textContent = textContent;
                   this.navigateLeft();
                 }
-              } else {
+              } else if (this.row > 0) {
                 this.deleteCurrentLine();
               }
             }
@@ -171,7 +174,7 @@ class Cursor {
 
           default: {
             const textContent = this.file.insertCharacter(this.currentLine, this.col, e.key);
-            this.currentLine.domNode.firstElementChild.textContent = textContent;
+            this.currentLine.vLineEl.firstElementChild.textContent = textContent;
             this.navigateRight();
           }
         }
@@ -211,34 +214,30 @@ class Cursor {
     // @ts-ignore
     this.cursorReal = document.getElementById("cursor").content.firstElementChild.cloneNode(true);
     this.cursorReal.style.marginLeft = `${this.col * 7.8}px`;
-    line.domNode.appendChild(this.cursorReal);
+    line.vLineEl.appendChild(this.cursorReal);
   }
 
   private deleteCurrentLine() {
+    const newCol = this.file.removeCurrentLine(
+      this.currentLine,
+      this.currentLine.text.slice(this.col)
+    );
+    this.updateLineOrdering();
+
     // adjust cursor
     if (this.row > 0) this.navigateUp();
-    this.col = this.currentLine.domNode.firstElementChild.textContent.length;
+    this.col = newCol;
   }
 
   private addNewLine() {
-    const lines = this.editorVirtual.getElementById("line-group").children;
-
-    const prevLine = lines.item(this.row);
-    const prevLineText = prevLine.firstElementChild.textContent;
+    const textContent = this.currentLine.text;
 
     // remove all the text after the cursor on the previous line (being copied to the line after)
-    prevLine.firstElementChild.textContent = prevLineText.slice(0, this.col);
+    this.currentLine.vLineEl.firstElementChild.textContent = textContent.slice(0, this.col);
 
     // mutates the doubling linked list at the currentLine changing its next value to the newly appended line
-    this.file.createNewLine(this.currentLine, prevLineText.slice(this.col));
+    this.file.createNewLine(this.currentLine, textContent.slice(this.col));
     this.updateLineOrdering();
-
-    // increment line numbers
-    const lineNumbers = this.editorVirtual.getElementById("line-number-group");
-    const newLineNumber = lineNumbers.lastElementChild.cloneNode(true) as HTMLElement;
-    newLineNumber.id = `line-number-${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
-    newLineNumber.firstElementChild.textContent = `${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
-    lineNumbers.appendChild(newLineNumber);
 
     // adjust cursor
     this.navigateDown();
@@ -247,27 +246,34 @@ class Cursor {
 
   // corrects ordering of lines on the vDOM
   private updateLineOrdering() {
-    const group = this.editorVirtual.getElementById("line-group");
+    const lineGroup = this.editorVirtual.getElementById("line-group");
+    const lineNumberGroup = this.editorVirtual.getElementById("line-number-group");
 
     // remove all the nodes on the DOM since it is out of order
-    while (group.firstElementChild) {
-      group.removeChild(group.lastElementChild);
+    while (lineGroup.firstElementChild) {
+      lineGroup.removeChild(lineGroup.lastElementChild);
+      lineNumberGroup.removeChild(lineNumberGroup.lastElementChild);
     }
 
     // repopulate the line nodes in order
+    let currentLineNumber = 1;
     let curr = this.file.head;
     while (curr) {
-      group.appendChild(curr.domNode);
+      lineGroup.appendChild(curr.vLineEl);
+      curr.vLineNumberEl.firstElementChild.textContent = currentLineNumber.toString();
+      lineNumberGroup.appendChild(curr.vLineNumberEl);
+
       curr = curr.next;
+      currentLineNumber++;
     }
   }
 
   // add background to "focused" currentLine
   private updateCurrentLine(newCurrentLine: LineNode) {
     if (this.currentLine) {
-      this.currentLine.domNode.style.backgroundColor = "";
+      this.currentLine.vLineEl.style.backgroundColor = "";
     }
-    newCurrentLine.domNode.style.backgroundColor = "rgba(219,221,223, 0.1)";
+    newCurrentLine.vLineEl.style.backgroundColor = "rgba(219,221,223, 0.1)";
     this.currentLine = newCurrentLine;
   }
 
@@ -289,7 +295,8 @@ class Cursor {
 }
 
 class LineNode {
-  domNode: HTMLElement;
+  vLineEl: HTMLElement;
+  vLineNumberEl: HTMLElement;
   text: string;
   prev: LineNode | null;
   next: LineNode | null;
@@ -300,7 +307,12 @@ class LineNode {
     this.prev = prev;
 
     // @ts-ignore
-    this.domNode = document.getElementById("line").content.firstElementChild.cloneNode(true);
+    this.vLineEl = document.getElementById("line").content.firstElementChild.cloneNode(true);
+
+    this.vLineNumberEl = document
+      .getElementById("line-number")
+      // @ts-ignore
+      .content.firstElementChild.cloneNode(true);
   }
 }
 
@@ -355,10 +367,20 @@ class File {
     if (fromLine?.next?.prev) fromLine.next.prev = newNode;
     fromLine.next = newNode;
 
-    newNode.domNode.firstElementChild.textContent = textOverflow;
+    newNode.vLineEl.firstElementChild.textContent = textOverflow;
   }
 
-  removeCurrentLine(line: number) {}
+  removeCurrentLine(currentLine: LineNode, textOverflow: string): number {
+    currentLine.prev.text += textOverflow;
+    currentLine.prev.vLineEl.firstElementChild.textContent += textOverflow;
+    currentLine.prev.next = currentLine.next;
+
+    // if the line above was empty column should just be set to 0
+    if (currentLine.prev.text.length === textOverflow.length) {
+      return 0;
+    }
+    return currentLine.prev.text.length - textOverflow.length;
+  }
 
   // chain nodes together by \n and return the entire content of the new modified file
   readFileState(): string {

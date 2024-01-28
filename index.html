@@ -9,23 +9,21 @@
   </head>
   <body>
     <div class="app">
-      <!-- all open files -->
+      <!-- active files -->
       <header id="tab-group" class="tabs-container"></header>
 
       <!-- figure out a better name instead of "main group" -->
       <div id="main-group" class="main-container">
+        <!-- side bar (file tree) -->
         <div></div>
+
+        <!-- dynamically rendered editor appended here -->
       </div>
     </div>
 
     <template id="editor">
       <div class="editor-container">
-        <div id="line-number-group" class="line-numbers-column">
-          <div id="line-number-0" class="line-number-container">
-            <span class="line-number">1</span>
-          </div>
-        </div>
-
+        <div id="line-number-group" class="line-numbers-column"></div>
         <div id="line-group" class="line-container"></div>
       </div>
     </template>
@@ -37,6 +35,12 @@
     <template id="line">
       <div class="line">
         <span class="default-line-text"></span>
+      </div>
+    </template>
+
+    <template id="line-number">
+      <div class="line-number-container">
+        <span class="line-number"></span>
       </div>
     </template>
 
