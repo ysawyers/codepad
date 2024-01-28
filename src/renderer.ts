@@ -93,9 +93,13 @@ class Cursor {
   col: number;
   currentLine: LineNode;
 
+  // used to remember the original position of the cursor when moving up/down (reset when moving any other direction)
+  colAnchor: number | null;
+
   constructor(row: number, col: number, fileText: string) {
     this.row = row;
     this.col = col;
+    this.colAnchor = null;
     this.file = new File(fileText);
     // @ts-ignore
     this.editorVirtual = document.getElementById("editor").content.cloneNode(true);
@@ -186,25 +190,39 @@ class Cursor {
   }
 
   private navigateLeft() {
+    this.colAnchor = null;
     this.col--;
   }
 
   private navigateRight() {
+    this.colAnchor = null;
     this.col++;
   }
 
   private navigateUp() {
     this.row--;
-
+    if (!this.colAnchor) this.colAnchor = this.col;
     if (this.currentLine.prev) {
+      if (this.colAnchor > this.currentLine.prev.text.length) {
+        this.col = this.currentLine.prev.text.length;
+      } else {
+        this.col = this.colAnchor;
+      }
+
       this.updateCurrentLine(this.currentLine.prev);
     }
   }
 
   private navigateDown() {
     this.row++;
-
+    if (!this.colAnchor) this.colAnchor = this.col;
     if (this.currentLine.next) {
+      if (this.colAnchor > this.currentLine.next.text.length) {
+        this.col = this.currentLine.next.text.length;
+      } else {
+        this.col = this.colAnchor;
+      }
+
       this.updateCurrentLine(this.currentLine.next);
     }
   }
