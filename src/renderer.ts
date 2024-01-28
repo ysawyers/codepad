@@ -96,7 +96,7 @@ class Cursor {
     // @ts-ignore
     this.editorVirtual = document.getElementById("editor").content.cloneNode(true);
 
-    this.currentLine = this.file.getCurrentLine(this.row);
+    this.updateCurrentLine(this.file.getCurrentLine(this.row));
     this.renderCursor(this.currentLine);
     this.updateLineOrdering();
     this.repaint();
@@ -129,7 +129,7 @@ class Cursor {
               for (let i = 0; i < 4; i++) {
                 this.currentLine.domNode.firstElementChild.textContent += "\xa0";
                 this.file.insertCharacter(this.currentLine, this.col, " ");
-                this.col++;
+                this.navigateRight();
               }
             }
             break;
@@ -139,25 +139,22 @@ class Cursor {
               const lineText = this.currentLine.domNode.firstElementChild.textContent;
               const lineLength = lineText.length;
 
-              if (lineLength) {
+              if (col != 0) {
                 // assumes 4 spaces == tab
                 const tabWhitespace = "\xa0\xa0\xa0\xa0";
                 if (lineText.slice(lineLength - 4, lineLength) === tabWhitespace) {
                   for (let i = 0; i < 4; i++) {
-                    const updatedTextContent = this.file.deleteCharacter(
-                      this.currentLine,
-                      this.col
-                    );
-                    this.currentLine.domNode.firstElementChild.textContent = updatedTextContent;
-                    this.col--;
+                    const textContent = this.file.deleteCharacter(this.currentLine, this.col);
+                    this.currentLine.domNode.firstElementChild.textContent = textContent;
+                    this.navigateLeft();
                   }
                 } else {
-                  const updatedTextContent = this.file.deleteCharacter(this.currentLine, this.col);
-                  this.currentLine.domNode.firstElementChild.textContent = updatedTextContent;
-                  this.col--;
+                  const textContent = this.file.deleteCharacter(this.currentLine, this.col);
+                  this.currentLine.domNode.firstElementChild.textContent = textContent;
+                  this.navigateLeft();
                 }
               } else {
-                console.log("move line up!");
+                this.deleteCurrentLine();
               }
             }
             break;
@@ -169,15 +166,13 @@ class Cursor {
             break;
 
           case "Enter":
-            this.renderNewLine();
-            this.row++;
-            this.col = 0;
+            this.addNewLine();
             break;
 
           default: {
-            const updatedTextContent = this.file.insertCharacter(this.currentLine, this.col, e.key);
-            this.currentLine.domNode.firstElementChild.textContent = updatedTextContent;
-            this.col++;
+            const textContent = this.file.insertCharacter(this.currentLine, this.col, e.key);
+            this.currentLine.domNode.firstElementChild.textContent = textContent;
+            this.navigateRight();
           }
         }
 
@@ -197,12 +192,18 @@ class Cursor {
 
   private navigateUp() {
     this.row--;
-    this.currentLine = this.currentLine.prev;
+
+    if (this.currentLine.prev) {
+      this.updateCurrentLine(this.currentLine.prev);
+    }
   }
 
   private navigateDown() {
     this.row++;
-    this.currentLine = this.currentLine.next;
+
+    if (this.currentLine.next) {
+      this.updateCurrentLine(this.currentLine.next);
+    }
   }
 
   private renderCursor(line: LineNode) {
@@ -213,7 +214,13 @@ class Cursor {
     line.domNode.appendChild(this.cursorReal);
   }
 
-  private renderNewLine() {
+  private deleteCurrentLine() {
+    // adjust cursor
+    if (this.row > 0) this.navigateUp();
+    this.col = this.currentLine.domNode.firstElementChild.textContent.length;
+  }
+
+  private addNewLine() {
     const lines = this.editorVirtual.getElementById("line-group").children;
 
     const prevLine = lines.item(this.row);
@@ -224,16 +231,18 @@ class Cursor {
 
     // mutates the doubling linked list at the currentLine changing its next value to the newly appended line
     this.file.createNewLine(this.currentLine, prevLineText.slice(this.col));
-
-    this.currentLine = this.currentLine.next;
     this.updateLineOrdering();
 
+    // increment line numbers
     const lineNumbers = this.editorVirtual.getElementById("line-number-group");
     const newLineNumber = lineNumbers.lastElementChild.cloneNode(true) as HTMLElement;
     newLineNumber.id = `line-number-${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
     newLineNumber.firstElementChild.textContent = `${parseInt(newLineNumber.id.split("-")[2]) + 1}`;
-
     lineNumbers.appendChild(newLineNumber);
+
+    // adjust cursor
+    this.navigateDown();
+    this.col = 0;
   }
 
   // corrects ordering of lines on the vDOM
@@ -251,6 +260,15 @@ class Cursor {
       group.appendChild(curr.domNode);
       curr = curr.next;
     }
+  }
+
+  // add background to "focused" currentLine
+  private updateCurrentLine(newCurrentLine: LineNode) {
+    if (this.currentLine) {
+      this.currentLine.domNode.style.backgroundColor = "";
+    }
+    newCurrentLine.domNode.style.backgroundColor = "rgba(219,221,223, 0.1)";
+    this.currentLine = newCurrentLine;
   }
 
   private repaint() {
