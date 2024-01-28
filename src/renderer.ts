@@ -43,6 +43,7 @@ class Enviornment {
 
     this.tabPrecendence.push(newTab || existingTab);
 
+    // foreground new tab "highest precendence"
     if (newTab) {
       const newTabCursor = new Cursor(0, 0, "");
       this.cursors.set(newTab, newTabCursor);
@@ -96,10 +97,11 @@ class Cursor {
     this.editorVirtual = document.getElementById("editor").content.cloneNode(true);
 
     this.currentLine = this.file.getCurrentLine(this.row);
-    this.renderCursor(this.currentLine.domNode);
-    this.updateLinesVirtual();
+    this.renderCursor(this.currentLine);
+    this.updateLineOrdering();
     this.repaint();
 
+    // REFACTOR: MEMORY LEAK: A DELETED CURSOR DOES NOT HAVE THEIR EVENT LISTENER REMOVED FROM DOCUMENT?
     document.addEventListener("keydown", (e) => {
       if (this.editorReal.isConnected) {
         switch (e.key) {
@@ -108,17 +110,17 @@ class Cursor {
             break;
 
           case "ArrowDown":
-            const linesContainer = this.editorVirtual.getElementById("line-group");
-            if (linesContainer.children.length > this.row + 1) this.navigateDown();
+            const linesGroupEl = this.editorVirtual.getElementById("line-group");
+            if (linesGroupEl.children.length > this.row + 1) this.navigateDown();
             break;
 
           case "ArrowLeft":
-            if (this.col > 0) this.col--;
+            if (this.col > 0) this.navigateLeft();
             break;
 
           case "ArrowRight":
             {
-              if (this.col < this.currentLine.text.length) this.col++;
+              if (this.col < this.currentLine.text.length) this.navigateRight();
             }
             break;
 
@@ -161,16 +163,13 @@ class Cursor {
             break;
 
           case "Shift":
-            this.file.removeCurrentLine(0);
             break;
 
           case "Meta":
             break;
 
           case "Enter":
-            // TODO: Combine logic into 1 function
             this.renderNewLine();
-            this.updateLinesVirtual();
             this.row++;
             this.col = 0;
             break;
@@ -182,36 +181,36 @@ class Cursor {
           }
         }
 
-        this.renderCursor(this.currentLine.domNode);
+        this.renderCursor(this.currentLine);
         this.repaint();
       }
     });
   }
 
-  // make navigate up more polished.
+  private navigateLeft() {
+    this.col--;
+  }
+
+  private navigateRight() {
+    this.col++;
+  }
+
   private navigateUp() {
     this.row--;
     this.currentLine = this.currentLine.prev;
-    if (this.currentLine.text.length < this.col) {
-      this.col = this.currentLine.text.length;
-    }
   }
 
-  // make navigate down more polished
   private navigateDown() {
     this.row++;
     this.currentLine = this.currentLine.next;
-    if (this.currentLine.text.length < this.col) {
-      this.col = this.currentLine.text.length;
-    }
   }
 
-  private renderCursor(line: HTMLElement) {
+  private renderCursor(line: LineNode) {
     if (this.cursorReal) this.cursorReal.remove();
     // @ts-ignore
     this.cursorReal = document.getElementById("cursor").content.firstElementChild.cloneNode(true);
     this.cursorReal.style.marginLeft = `${this.col * 7.8}px`;
-    line.appendChild(this.cursorReal);
+    line.domNode.appendChild(this.cursorReal);
   }
 
   private renderNewLine() {
@@ -223,8 +222,11 @@ class Cursor {
     // remove all the text after the cursor on the previous line (being copied to the line after)
     prevLine.firstElementChild.textContent = prevLineText.slice(0, this.col);
 
+    // mutates the doubling linked list at the currentLine changing its next value to the newly appended line
     this.file.createNewLine(this.currentLine, prevLineText.slice(this.col));
+
     this.currentLine = this.currentLine.next;
+    this.updateLineOrdering();
 
     const lineNumbers = this.editorVirtual.getElementById("line-number-group");
     const newLineNumber = lineNumbers.lastElementChild.cloneNode(true) as HTMLElement;
@@ -234,7 +236,8 @@ class Cursor {
     lineNumbers.appendChild(newLineNumber);
   }
 
-  private updateLinesVirtual() {
+  // corrects ordering of lines on the vDOM
+  private updateLineOrdering() {
     const group = this.editorVirtual.getElementById("line-group");
 
     // remove all the nodes on the DOM since it is out of order
@@ -325,17 +328,16 @@ class File {
     return line.text;
   }
 
-  // returns the text that should start on the new line
-  createNewLine(fromLine: LineNode, textOverflow: string): string {
+  createNewLine(fromLine: LineNode, textOverflow: string) {
     // removes the overflowed text that was removed from the previous line
     fromLine.text = fromLine.text.slice(0, fromLine.text.length - textOverflow.length);
 
     // adds the overflowed text to the new line
     const newNode = new LineNode(textOverflow, fromLine.next, fromLine);
+    if (fromLine?.next?.prev) fromLine.next.prev = newNode;
+    fromLine.next = newNode;
 
     newNode.domNode.firstElementChild.textContent = textOverflow;
-    fromLine.next = newNode;
-    return textOverflow;
   }
 
   removeCurrentLine(line: number) {}
