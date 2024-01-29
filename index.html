@@ -9,17 +9,33 @@
   </head>
   <body>
     <div class="app">
-      <!-- active files -->
-      <header id="tab-group" class="tabs-container"></header>
-
       <!-- figure out a better name instead of "main group" -->
       <div id="main-group" class="main-container">
-        <!-- side bar (file tree) -->
-        <div></div>
+        <div class="sidebar-container"></div>
 
-        <!-- dynamically rendered editor appended here -->
+        <div id="workspace-group" class="workspace-container">
+          <!-- active files -->
+          <header id="tab-group" class="tabs-container"></header>
+
+          <!-- dynamically rendered editor appended here -->
+        </div>
       </div>
     </div>
+
+    <template id="workspace">
+      <div class="workspace-welcome-container">
+        <section style="margin-bottom: 10em">
+          <h1 style="color: white; font-size: 2.5em">CodePad</h1>
+          <h2 style="color: rgb(123, 123, 123)">Your lightweight text editor</h2>
+
+          <div style="margin-top: 2em">
+            <p id="new-file" style="color: #a855f7; cursor: pointer">New File</p>
+            <p style="color: #a855f7; cursor: pointer">Open File</p>
+            <p style="color: #a855f7; cursor: pointer">Open Folder</p>
+          </div>
+        </section>
+      </div>
+    </template>
 
     <template id="editor">
       <div class="editor-container">
@@ -46,7 +62,7 @@
 
     <template id="tab">
       <div class="tab">
-        <p class="tab-name"></p>
+        <span class="tab-name"></span>
         <div class="tab-close-button"></div>
       </div>
     </template>

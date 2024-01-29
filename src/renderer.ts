@@ -1,7 +1,11 @@
 import "./index.css";
 
+// create tree of linkedlist partialHeads for easy grouping!
+// generic state management for vanilla, not as a framework but as an extension
+
+// a b c enter enter enter backspace and then go to bottom then move cursor to top (navigate)
+
 class Enviornment {
-  // maps the tab element to the cursor for quick deletion
   cursors: Map<HTMLElement, Cursor>;
   tabPrecendence: HTMLElement[];
   foregroundedTab: HTMLElement | null;
@@ -11,10 +15,7 @@ class Enviornment {
     this.tabPrecendence = [];
     this.foregroundedTab = null;
 
-    this.openTab("untitled-0", null);
     this.openTab("untitled-1", null);
-    // this.openTab("untitled-2", null);
-    // this.openTab("untitled-3", null);
   }
 
   openTab(fileName: string, existingTab: HTMLElement | null) {
@@ -56,29 +57,14 @@ class Enviornment {
     }
   }
 
+  // TODO: work on tab precendence problem when closing tabs
   closeTab(existingTab: HTMLElement) {
     const cursor = this.cursors.get(existingTab);
     cursor.background();
     existingTab.remove();
     this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
 
-    // if there are still tabs left fallback on the next most recent one selected
-    if (this.tabPrecendence.length) {
-      this.tabPrecendence.pop();
-
-      console.log(this.tabPrecendence);
-
-      let tabFallback = this.tabPrecendence.pop();
-      // EDGE CASE: If there are tabs that have already been deleted in the stack, ignore and remove
-      while (!this.cursors.get(tabFallback) && this.tabPrecendence.length) {
-        tabFallback = this.tabPrecendence.pop();
-      }
-      const cursor = this.cursors.get(tabFallback);
-
-      console.log(cursor);
-
-      cursor.foreground();
-    }
+    if (!this.cursors.size) this.foregroundedTab = null;
   }
 }
 
@@ -131,10 +117,10 @@ class Cursor {
             }
             break;
 
-          case "Tab": // CONSTANT TAB LENGTH: 4
+          case "Tab":
             {
               for (let i = 0; i < 4; i++) {
-                const textContent = this.file.insertCharacter(this.currentLine, this.col, " ");
+                const textContent = this.file.insertCharacter(this.currentLine, this.col, "\xa0");
                 this.currentLine.vLineEl.firstElementChild.textContent = textContent;
                 this.navigateRight();
               }
@@ -143,13 +129,9 @@ class Cursor {
 
           case "Backspace":
             {
-              const lineText = this.currentLine.vLineEl.firstElementChild.textContent;
-              const lineLength = lineText.length;
-
               if (this.col != 0) {
-                // assumes 4 spaces == tab
-                const tabWhitespace = "\xa0\xa0\xa0\xa0";
-                if (lineText.slice(lineLength - 4, lineLength) === tabWhitespace) {
+                const tab = "\xa0\xa0\xa0\xa0";
+                if (this.col > 3 && this.currentLine.text.slice(this.col - 4, this.col) === tab) {
                   for (let i = 0; i < 4; i++) {
                     const textContent = this.file.deleteCharacter(this.currentLine, this.col);
                     this.currentLine.vLineEl.firstElementChild.textContent = textContent;
@@ -177,7 +159,8 @@ class Cursor {
             break;
 
           default: {
-            const textContent = this.file.insertCharacter(this.currentLine, this.col, e.key);
+            const ch = e.key === " " ? "\xa0" : e.key;
+            const textContent = this.file.insertCharacter(this.currentLine, this.col, ch);
             this.currentLine.vLineEl.firstElementChild.textContent = textContent;
             this.navigateRight();
           }
@@ -235,18 +218,6 @@ class Cursor {
     line.vLineEl.appendChild(this.cursorReal);
   }
 
-  private deleteCurrentLine() {
-    const newCol = this.file.removeCurrentLine(
-      this.currentLine,
-      this.currentLine.text.slice(this.col)
-    );
-    this.updateLineOrdering();
-
-    // adjust cursor
-    if (this.row > 0) this.navigateUp();
-    this.col = newCol;
-  }
-
   private addNewLine() {
     const textContent = this.currentLine.text;
 
@@ -260,6 +231,17 @@ class Cursor {
     // adjust cursor
     this.navigateDown();
     this.col = 0;
+  }
+
+  private deleteCurrentLine() {
+    const textOverflow = this.currentLine.text.slice(this.col);
+
+    const newCol = this.file.removeCurrentLine(this.currentLine, textOverflow);
+    this.updateLineOrdering();
+
+    // adjust cursor
+    this.navigateUp();
+    this.col = newCol;
   }
 
   // corrects ordering of lines on the vDOM
@@ -296,7 +278,7 @@ class Cursor {
   }
 
   private repaint() {
-    const parent = document.getElementById("main-group");
+    const parent = document.getElementById("workspace-group");
     if (this.editorReal) this.editorReal.remove();
     this.editorReal = this.editorVirtual.firstElementChild.cloneNode(true) as HTMLElement;
     parent.appendChild(this.editorReal);
@@ -364,10 +346,8 @@ class File {
     return currentLine;
   }
 
-  // line-0 is first node
   insertCharacter(line: LineNode, col: number, ch: string): string {
-    const val = ch === " " ? "\xa0" : ch;
-    line.text = line.text.slice(0, col) + val + line.text.slice(col);
+    line.text = line.text.slice(0, col) + ch + line.text.slice(col);
     return line.text;
   }
 
@@ -389,9 +369,15 @@ class File {
   }
 
   removeCurrentLine(currentLine: LineNode, textOverflow: string): number {
+    if (currentLine.next) {
+      currentLine.next.prev = currentLine.prev;
+      currentLine.prev.next = currentLine.next;
+    } else {
+      currentLine.prev.next = null;
+    }
+
     currentLine.prev.text += textOverflow;
     currentLine.prev.vLineEl.firstElementChild.textContent += textOverflow;
-    currentLine.prev.next = currentLine.next;
 
     // if the line above was empty column should just be set to 0
     if (currentLine.prev.text.length === textOverflow.length) {
@@ -415,4 +401,15 @@ class File {
   }
 }
 
-new Enviornment();
+const env = new Enviornment();
+
+// this.welcomePage = document
+//   .getElementById("workspace")
+//   // @ts-ignore
+//   .content.firstElementChild.cloneNode(true);
+
+// this.welcomePage.getElementById("new-file").addEventListener("click", () => {
+//   env.openTab("untitled-0", null);
+// });
+
+// document.getElementById("workspace-group").appendChild(this.welcomePage);
