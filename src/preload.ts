@@ -1,2 +1,11 @@
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
+import { contextBridge, ipcRenderer } from "electron";
+
+contextBridge.exposeInMainWorld("electronAPI", {
+  openFile: async () => {
+    const fileResult = await ipcRenderer.invoke("dialog:openFile");
+    return fileResult;
+  },
+  // openFolder: () => {
+  //   const filePaths = ipcRenderer.invoke("dialog:openFile");
+  // },
+});

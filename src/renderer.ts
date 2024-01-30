@@ -1,11 +1,10 @@
 import "./index.css";
-
 // create tree of linkedlist partialHeads for easy grouping!
-// generic state management for vanilla, not as a framework but as an extension
-
-// a b c enter enter enter backspace and then go to bottom then move cursor to top (navigate)
+// create type interface for window (contextBridge API)
 
 class Enviornment {
+  welcomeView: HTMLElement;
+
   cursors: Map<HTMLElement, Cursor>;
   tabPrecendence: HTMLElement[];
   foregroundedTab: HTMLElement | null;
@@ -15,46 +14,52 @@ class Enviornment {
     this.tabPrecendence = [];
     this.foregroundedTab = null;
 
-    this.openTab("untitled-1", null);
+    this.welcomeView = document
+      .getElementById("workspace")
+      // @ts-ignore
+      .content.firstElementChild.cloneNode(true);
+
+    if (!this.cursors.size) {
+      document.getElementById("workspace-group").appendChild(this.welcomeView);
+
+      const newFile = document.getElementById("new-file");
+      newFile.addEventListener("click", () => {
+        this.welcomeView.remove();
+        env.openNewTab("untitled-0", "");
+      });
+
+      const openFile = document.getElementById("open-file");
+      openFile.addEventListener("click", async () => {
+        // @ts-ignore
+        const file = (await window.electronAPI.openFile())[0];
+        this.welcomeView.remove();
+        env.openNewTab(file.name, file.data);
+      });
+    }
   }
 
-  openTab(fileName: string, existingTab: HTMLElement | null) {
-    // if there is a tab already open, close it
+  openNewTab(name: string, data: string) {
     if (this.foregroundedTab) {
       const prevTabCursor = this.cursors.get(this.foregroundedTab);
       prevTabCursor.background();
     }
 
-    // if the tab being opened doesn't exist, create it
-    let newTab: HTMLElement | null = null;
-    if (!existingTab) {
-      // @ts-ignore
-      const tabCopy = document.getElementById("tab").content.cloneNode(true);
-      newTab = tabCopy.firstElementChild as HTMLElement;
-      newTab.firstElementChild.textContent = fileName;
+    // @ts-ignore
+    const tab = document.getElementById("tab").content.cloneNode(true);
+    const newTab = tab.firstElementChild as HTMLElement;
+    newTab.firstElementChild.textContent = name;
 
-      // attatch event listener to close tab
-      (newTab.lastElementChild as HTMLElement).addEventListener("click", () => {
-        this.closeTab(newTab);
-      });
+    (newTab.lastElementChild as HTMLElement).addEventListener("click", () => {
+      this.closeTab(newTab);
+    });
 
-      const tabs = document.getElementById("tab-group");
-      tabs.appendChild(newTab);
-    }
+    const tabs = document.getElementById("tab-group");
+    tabs.appendChild(newTab);
 
-    this.tabPrecendence.push(newTab || existingTab);
-
-    // foreground new tab "highest precendence"
-    if (newTab) {
-      const newTabCursor = new Cursor(0, 0, "");
-      this.cursors.set(newTab, newTabCursor);
-      this.foregroundedTab = newTab;
-      newTabCursor.foreground();
-    } else {
-      const currentTabCursor = this.cursors.get(existingTab);
-      this.foregroundedTab = existingTab;
-      currentTabCursor.foreground();
-    }
+    const newTabCursor = new Cursor(0, 0, data);
+    this.cursors.set(newTab, newTabCursor);
+    this.foregroundedTab = newTab;
+    newTabCursor.foreground();
   }
 
   // TODO: work on tab precendence problem when closing tabs
@@ -64,7 +69,10 @@ class Enviornment {
     existingTab.remove();
     this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
 
-    if (!this.cursors.size) this.foregroundedTab = null;
+    if (!this.cursors.size) {
+      this.foregroundedTab = null;
+      document.getElementById("workspace-group").appendChild(this.welcomeView);
+    }
   }
 }
 
@@ -120,8 +128,7 @@ class Cursor {
           case "Tab":
             {
               for (let i = 0; i < 4; i++) {
-                const textContent = this.file.insertCharacter(this.currentLine, this.col, "\xa0");
-                this.currentLine.vLineEl.firstElementChild.textContent = textContent;
+                this.file.insertCharacter(this.currentLine, this.col, "\xa0");
                 this.navigateRight();
               }
             }
@@ -133,13 +140,11 @@ class Cursor {
                 const tab = "\xa0\xa0\xa0\xa0";
                 if (this.col > 3 && this.currentLine.text.slice(this.col - 4, this.col) === tab) {
                   for (let i = 0; i < 4; i++) {
-                    const textContent = this.file.deleteCharacter(this.currentLine, this.col);
-                    this.currentLine.vLineEl.firstElementChild.textContent = textContent;
+                    this.file.deleteCharacter(this.currentLine, this.col);
                     this.navigateLeft();
                   }
                 } else {
-                  const textContent = this.file.deleteCharacter(this.currentLine, this.col);
-                  this.currentLine.vLineEl.firstElementChild.textContent = textContent;
+                  this.file.deleteCharacter(this.currentLine, this.col);
                   this.navigateLeft();
                 }
               } else if (this.row > 0) {
@@ -156,12 +161,12 @@ class Cursor {
 
           case "Enter":
             this.addNewLine();
+            this.colAnchor = null;
             break;
 
           default: {
             const ch = e.key === " " ? "\xa0" : e.key;
-            const textContent = this.file.insertCharacter(this.currentLine, this.col, ch);
-            this.currentLine.vLineEl.firstElementChild.textContent = textContent;
+            this.file.insertCharacter(this.currentLine, this.col, ch);
             this.navigateRight();
           }
         }
@@ -320,7 +325,7 @@ class File {
   head: LineNode;
 
   constructor(fileText: string) {
-    this.head = new LineNode("", null, null); // line-0
+    this.head = fileText.length ? null : new LineNode("", null, null);
 
     let curr = this.head;
     let buffer = "";
@@ -329,11 +334,33 @@ class File {
       const currentChar = fileText[i];
 
       if (currentChar === "\n") {
-        curr.next = new LineNode(buffer, null, curr);
-        curr = curr.next;
+        const node = new LineNode(buffer, null, curr);
+        node.vLineEl.firstElementChild.textContent = buffer;
+
+        if (curr) {
+          curr.next = node;
+          curr = curr.next;
+        } else {
+          this.head = node;
+          curr = this.head;
+        }
+
         buffer = "";
       } else {
         buffer += currentChar;
+      }
+    }
+
+    if (buffer.length) {
+      const node = new LineNode(buffer, null, curr);
+      node.vLineEl.firstElementChild.textContent = buffer;
+
+      if (curr) {
+        curr.next = node;
+        curr = curr.next;
+      } else {
+        this.head = node;
+        curr = this.head;
       }
     }
   }
@@ -346,14 +373,16 @@ class File {
     return currentLine;
   }
 
-  insertCharacter(line: LineNode, col: number, ch: string): string {
-    line.text = line.text.slice(0, col) + ch + line.text.slice(col);
-    return line.text;
+  insertCharacter(line: LineNode, col: number, ch: string) {
+    const text = line.text.slice(0, col) + ch + line.text.slice(col);
+    line.text = text;
+    line.vLineEl.firstElementChild.textContent = text;
   }
 
-  deleteCharacter(line: LineNode, col: number): string {
-    line.text = line.text.slice(0, col - 1) + line.text.slice(col);
-    return line.text;
+  deleteCharacter(line: LineNode, col: number) {
+    const text = line.text.slice(0, col - 1) + line.text.slice(col);
+    line.text = text;
+    line.vLineEl.firstElementChild.textContent = text;
   }
 
   createNewLine(fromLine: LineNode, textOverflow: string) {
@@ -402,14 +431,3 @@ class File {
 }
 
 const env = new Enviornment();
-
-// this.welcomePage = document
-//   .getElementById("workspace")
-//   // @ts-ignore
-//   .content.firstElementChild.cloneNode(true);
-
-// this.welcomePage.getElementById("new-file").addEventListener("click", () => {
-//   env.openTab("untitled-0", null);
-// });
-
-// document.getElementById("workspace-group").appendChild(this.welcomePage);

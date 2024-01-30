@@ -1,5 +1,28 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "path";
+import fs from "fs";
+
+interface FileResult {
+  name: string;
+  data: string;
+}
+
+async function handleFileOpen() {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openFile", "openDirectory"],
+  });
+
+  if (!canceled) {
+    let fileContents: FileResult[] = [];
+    for (const filePath of filePaths) {
+      const name = path.parse(filePath).base;
+      const data = fs.readFileSync(filePath, "utf-8");
+      fileContents.push({ name, data });
+    }
+    return fileContents;
+  }
+  return [];
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -27,10 +50,11 @@ const createWindow = () => {
   mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on("ready", createWindow);
+app.on("ready", () => {
+  ipcMain.handle("dialog:openFile", handleFileOpen);
+  // create initial window
+  createWindow();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
