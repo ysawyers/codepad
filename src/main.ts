@@ -2,26 +2,56 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "path";
 import fs from "fs";
 
-interface FileResult {
+interface Folder {
+  name: string;
+  files: {
+    filePath: string;
+    name: string;
+    isDir: false;
+  }[];
+}
+
+interface File {
   name: string;
   data: string;
 }
 
 async function handleFileOpen() {
   const { canceled, filePaths } = await dialog.showOpenDialog({
-    properties: ["openFile", "openDirectory"],
+    properties: ["openFile"],
   });
 
+  const file: File = { name: "", data: "" };
   if (!canceled) {
-    let fileContents: FileResult[] = [];
-    for (const filePath of filePaths) {
-      const name = path.parse(filePath).base;
-      const data = fs.readFileSync(filePath, "utf-8");
-      fileContents.push({ name, data });
-    }
-    return fileContents;
+    file.name = path.parse(filePaths[0]).base;
+    file.data = fs.readFileSync(filePaths[0], "utf-8");
   }
-  return [];
+  return file;
+}
+
+async function handleFolderOpen() {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+  });
+
+  const folder: Folder = { name: "", files: [] };
+
+  if (!canceled) {
+    folder.name = path.parse(filePaths[0]).base;
+
+    const files = fs.readdirSync(filePaths[0]);
+    for (let i = 0; i < files.length; i++) {
+      const name = path.parse(files[i]).base;
+      const filePath = path.join(folder.name, files[i]);
+      folder.files.push({ name, filePath, isDir: false });
+    }
+  }
+  return folder;
+}
+
+async function openFileFromPath(_: any, filePath: string) {
+  const data = fs.readFileSync(filePath, "utf-8");
+  return data;
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -51,7 +81,10 @@ const createWindow = () => {
 };
 
 app.on("ready", () => {
-  ipcMain.handle("dialog:openFile", handleFileOpen);
+  ipcMain.handle("openFile", handleFileOpen);
+  ipcMain.handle("openFolder", handleFolderOpen);
+  ipcMain.handle("openFileFromPath", openFileFromPath);
+
   // create initial window
   createWindow();
 });

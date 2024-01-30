@@ -1,9 +1,23 @@
 import "./index.css";
-// create tree of linkedlist partialHeads for easy grouping!
+
+// create tree of linkedlist partialHeads for easy grouping! (use cases tho?)
 // create type interface for window (contextBridge API)
 
+// interface FileResult {
+//   name: string;
+//   data: string;
+//   filePath: string;
+// }
+
+interface FileData {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
 class Enviornment {
-  welcomeView: HTMLElement;
+  landingEl: HTMLElement;
+  sidebar: FileTree;
 
   cursors: Map<HTMLElement, Cursor>;
   tabPrecendence: HTMLElement[];
@@ -14,28 +28,42 @@ class Enviornment {
     this.tabPrecendence = [];
     this.foregroundedTab = null;
 
-    this.welcomeView = document
+    this.landingEl = document
       .getElementById("workspace")
       // @ts-ignore
       .content.firstElementChild.cloneNode(true);
 
+    // EDGE CASE: if enviornment is not opened with project automatically
     if (!this.cursors.size) {
-      document.getElementById("workspace-group").appendChild(this.welcomeView);
-
-      const newFile = document.getElementById("new-file");
-      newFile.addEventListener("click", () => {
-        this.welcomeView.remove();
-        env.openNewTab("untitled-0", "");
-      });
-
-      const openFile = document.getElementById("open-file");
-      openFile.addEventListener("click", async () => {
-        // @ts-ignore
-        const file = (await window.electronAPI.openFile())[0];
-        this.welcomeView.remove();
-        env.openNewTab(file.name, file.data);
-      });
+      this.initializeWelcomePage();
     }
+  }
+
+  initializeWelcomePage() {
+    document.getElementById("workspace-group").appendChild(this.landingEl);
+
+    const newFile = document.getElementById("new-file");
+    newFile.addEventListener("click", () => {
+      this.landingEl.remove();
+      env.openNewTab("untitled-0", "");
+    });
+
+    const openFile = document.getElementById("open-file");
+    openFile.addEventListener("click", async () => {
+      // @ts-ignore
+      const file = await window.electronAPI.openFile();
+      this.landingEl.remove();
+      env.openNewTab(file.name, file.data);
+    });
+
+    const openFolder = document.getElementById("open-folder");
+    openFolder.addEventListener("click", async () => {
+      // @ts-ignore
+      const folder = await window.electronAPI.openFolder();
+      this.sidebar = new FileTree(folder);
+      document.getElementById("sidebar").appendChild(this.sidebar.el);
+      this.sidebar.expand();
+    });
   }
 
   openNewTab(name: string, data: string) {
@@ -71,9 +99,67 @@ class Enviornment {
 
     if (!this.cursors.size) {
       this.foregroundedTab = null;
-      document.getElementById("workspace-group").appendChild(this.welcomeView);
+      document.getElementById("workspace-group").appendChild(this.landingEl);
     }
   }
+}
+
+class FileTreeChild {
+  el: HTMLElement;
+
+  name: string;
+  path: string;
+
+  constructor(name: string, path: string) {
+    this.name = name;
+    this.path = path;
+
+    // @ts-ignore
+    const item = document.getElementById("file").content.firstElementChild.cloneNode(true);
+    item.firstElementChild.textContent = this.name;
+    this.el = item;
+  }
+
+  retrieveData() {}
+}
+
+class FileTree {
+  el: HTMLElement;
+
+  name: string;
+  subdirs: FileTree[];
+  files: FileTreeChild[];
+
+  // TODO: Add typing to this.
+  constructor(folder: any) {
+    // @ts-ignore
+    this.el = document.getElementById("folder").content.firstElementChild.cloneNode(true);
+    this.name = folder.name;
+    this.files = [];
+
+    this.el.addEventListener("click", () => {
+      this.expand();
+    });
+
+    // (depth = 1) by default
+    for (let i = 0; i < folder.files.length; i++) {
+      if (folder.files[i].isDir) {
+        console.log("HAVE NOT HANDELED SUBDIRS YET.");
+      } else {
+        const file = new FileTreeChild(folder.files[i].name, folder.files[i].path);
+        this.files.push(file);
+      }
+    }
+  }
+
+  expand() {
+    for (let i = 0; i < this.files.length; i++) {
+      this.el.lastElementChild.appendChild(this.files[i].el);
+    }
+  }
+
+  // collapsed by default
+  collapse() {}
 }
 
 // manages the cursor that navigates each file.
@@ -347,7 +433,7 @@ class File {
 
         buffer = "";
       } else {
-        buffer += currentChar;
+        buffer += currentChar === " " ? "\xa0" : currentChar;
       }
     }
 

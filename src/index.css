@@ -46,6 +46,16 @@ body {
 .sidebar-container {
   width: 12em;
   background-color: rgba(42, 38, 38, 0.95);
+  overflow-y: scroll;
+}
+
+.sidebar-item-container {
+  color: white;
+}
+
+.sidebar-item-container:hover {
+  background-color: rgba(219, 221, 223, 0.1);
+  cursor: pointer;
 }
 
 .tab {
@@ -90,10 +100,6 @@ body {
 .line {
   position: relative;
   height: 1em;
-}
-
-.line:focus {
-  background-color: red;
 }
 
 .default-line-text {

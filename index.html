@@ -11,7 +11,8 @@
     <div class="app">
       <!-- figure out a better name instead of "main group" -->
       <div id="main-group" class="main-container">
-        <div class="sidebar-container"></div>
+        <!-- all files created/related to the project stashed here -->
+        <div id="sidebar" class="sidebar-container"></div>
 
         <div id="workspace-group" class="workspace-container">
           <!-- active files -->
@@ -31,9 +32,24 @@
           <div style="margin-top: 2em">
             <p id="new-file" style="color: #a855f7; cursor: pointer">New File</p>
             <p id="open-file" style="color: #a855f7; cursor: pointer">Open File</p>
-            <p style="color: #a855f7; cursor: pointer">Open Folder</p>
+            <p id="open-folder" style="color: #a855f7; cursor: pointer">Open Folder</p>
           </div>
         </section>
+      </div>
+    </template>
+
+    <template id="folder">
+      <div class="sidebar-item-container">
+        <strong>i am a folder</strong>
+
+        <!-- files underneath the folder are stored here! -->
+        <div style="margin-left: 10px"></div>
+      </div>
+    </template>
+
+    <template id="file">
+      <div class="sidebar-item-container">
+        <span>heythere.py</span>
       </div>
     </template>
 

@@ -2,10 +2,16 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electronAPI", {
   openFile: async () => {
-    const fileResult = await ipcRenderer.invoke("dialog:openFile");
-    return fileResult;
+    const file = await ipcRenderer.invoke("openFile");
+    return file;
   },
-  // openFolder: () => {
-  //   const filePaths = ipcRenderer.invoke("dialog:openFile");
-  // },
+  openFolder: async () => {
+    const folder = await ipcRenderer.invoke("openFolder");
+    return folder;
+  },
+  openFileFromPath: async (path: string) => {
+    const data = await ipcRenderer.invoke("openFileFromPath", path);
+    console.log(data);
+    return data;
+  },
 });
