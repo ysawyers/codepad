@@ -37,7 +37,7 @@ export class Editor {
       if (ch === "\n") {
         const newLine: Line = {
           next: null,
-          prev: null,
+          prev: curr,
           el: createLineEl(),
         };
         newLine.el.firstElementChild.textContent = buff;
