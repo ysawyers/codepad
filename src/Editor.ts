@@ -98,11 +98,6 @@ export class Editor {
   }
 
   createNewLine(prevLine: Line, textOverflow: string) {
-    // cut the text after the cursor off to push to the following line
-    let prevLineText = prevLine.el.firstElementChild.textContent;
-    prevLineText = prevLineText.slice(0, prevLineText.length - textOverflow.length);
-    prevLine.el.firstElementChild.textContent = prevLineText;
-
     const newLine: Line = {
       prev: prevLine,
       next: prevLine.next,
