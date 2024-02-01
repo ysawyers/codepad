@@ -39,22 +39,22 @@
     </template>
 
     <template id="folder">
-      <div class="sidebar-item-container">
-        <strong>i am a folder</strong>
+      <div style="width: 100%">
+        <p class="folder-text"></p>
 
         <!-- files underneath the folder are stored here! -->
-        <div style="margin-left: 10px"></div>
+        <div class="folder-files-container"></div>
       </div>
     </template>
 
     <template id="file">
       <div class="sidebar-item-container">
-        <span>heythere.py</span>
+        <span></span>
       </div>
     </template>
 
     <template id="editor">
-      <div class="editor-container">
+      <div id="editor-container" class="editor-container">
         <div id="line-number-group" class="line-numbers-column"></div>
         <div id="line-group" class="line-container"></div>
       </div>

@@ -7,6 +7,7 @@
 
 body {
   display: block;
+  overflow: hidden;
 }
 
 .app {
@@ -14,6 +15,23 @@ body {
   flex-direction: column;
   width: 100vw;
   height: 100vh;
+  overflow-y: auto;
+}
+
+.folder-text {
+  font-weight: bold;
+  color: white;
+  width: 100%;
+  font-size: 15px;
+}
+
+.folder-text:hover {
+  background-color: rgba(219, 221, 223, 0.1);
+  cursor: pointer;
+}
+
+.folder-files-container > * {
+  padding-left: 10px;
 }
 
 .main-container {
@@ -40,17 +58,18 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
-  background-color: rgba(42, 38, 38, 0.95);
+  background-color: rgba(42, 38, 38, 1);
 }
 
 .sidebar-container {
   width: 12em;
   background-color: rgba(42, 38, 38, 0.95);
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 
 .sidebar-item-container {
   color: white;
+  font-size: 15px;
 }
 
 .sidebar-item-container:hover {
