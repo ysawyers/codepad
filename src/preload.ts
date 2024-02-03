@@ -9,9 +9,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const folder = await ipcRenderer.invoke("openFolder");
     return folder;
   },
-  openFileFromPath: async (path: string) => {
-    const data = await ipcRenderer.invoke("openFileFromPath", path);
-    console.log(data);
+  openFileFromPath: async (root: string, file: string) => {
+    const data = await ipcRenderer.invoke("openFileFromPath", root, file);
     return data;
   },
 });

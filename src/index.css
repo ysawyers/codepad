@@ -2,12 +2,11 @@
   margin: 0;
   padding: 0;
   margin: 0;
-  min-width: 0;
+  overflow: hidden;
 }
 
 body {
   display: block;
-  overflow: hidden;
 }
 
 .app {
@@ -15,7 +14,6 @@ body {
   flex-direction: column;
   width: 100vw;
   height: 100vh;
-  overflow-y: auto;
 }
 
 .folder-text {
@@ -36,12 +34,17 @@ body {
 
 .main-container {
   display: flex;
+  flex-direction: row;
+
+  /* fills the screen top-down */
   flex-grow: 1;
 }
 
 .workspace-container {
   display: flex;
   flex-direction: column;
+
+  /* fills the workspace left-right (sidebar not included) */
   flex-grow: 1;
 }
 
@@ -64,7 +67,6 @@ body {
 .sidebar-container {
   width: 12em;
   background-color: rgba(42, 38, 38, 0.95);
-  overflow-y: auto;
 }
 
 .sidebar-item-container {
@@ -94,7 +96,6 @@ body {
   font-weight: 600;
   margin-left: 10px;
   width: 10rem;
-  overflow: hidden;
 }
 
 .tab-close-button {
@@ -106,14 +107,16 @@ body {
 }
 
 .editor-container {
-  display: flex;
-  flex-grow: 1;
+  background-color: #1b1c26;
+  flex: 1;
+  overflow: auto;
 }
 
 .line-container {
   flex: 1;
   background-color: #1b1c26;
   cursor: text;
+  overflow: auto;
 }
 
 .line {
@@ -126,27 +129,6 @@ body {
   color: white;
   font-family: "DM Mono", monospace;
   font-size: 13px;
-}
-
-.line-number-container {
-  display: flex;
-  width: 80%;
-  text-align: center;
-  color: white;
-  height: 1em;
-  margin: auto;
-}
-
-.line-number {
-  font-size: 13px;
-  color: #6e7681;
-  margin: auto;
-  font-family: "DM Mono", monospace;
-}
-
-.line-numbers-column {
-  width: 3.5em;
-  background-color: #1f1f1f;
 }
 
 .cursor {

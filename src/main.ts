@@ -2,13 +2,10 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import path from "path";
 import fs from "fs";
 
-interface Folder {
+interface FileOrFolder {
+  parentPath: string | null;
   name: string;
-  files: {
-    filePath: string;
-    name: string;
-    isDir: false;
-  }[];
+  children: FileOrFolder[] | null;
 }
 
 interface File {
@@ -34,23 +31,40 @@ async function handleFolderOpen() {
     properties: ["openDirectory"],
   });
 
-  const folder: Folder = { name: "", files: [] };
+  const folder: FileOrFolder = {
+    parentPath: path.parse(filePaths[0]).dir,
+    name: path.parse(filePaths[0]).base,
+    children: [],
+  };
+
+  let subFolders = [folder];
 
   if (!canceled) {
-    folder.name = path.parse(filePaths[0]).base;
+    while (subFolders.length) {
+      let currentFolder = subFolders.pop();
 
-    const files = fs.readdirSync(filePaths[0]);
-    for (let i = 0; i < files.length; i++) {
-      const name = path.parse(files[i]).base;
-      const filePath = path.join(folder.name, files[i]);
-      folder.files.push({ name, filePath, isDir: false });
+      const files = fs.readdirSync(path.join(currentFolder.parentPath, currentFolder.name));
+      for (let i = 0; i < files.length; i++) {
+        const parentPath = path.join(currentFolder.parentPath, currentFolder.name);
+
+        const isFolder = fs.lstatSync(path.join(parentPath, files[i])).isDirectory();
+
+        let fileOrFolder: FileOrFolder;
+        if (isFolder) {
+          fileOrFolder = { parentPath, name: files[i], children: [] };
+          subFolders.push(fileOrFolder);
+        } else {
+          fileOrFolder = { parentPath, name: files[i], children: null };
+        }
+        currentFolder.children.push(fileOrFolder);
+      }
     }
   }
   return folder;
 }
 
-async function openFileFromPath(_: any, filePath: string) {
-  const data = fs.readFileSync(filePath, "utf-8");
+async function openFileFromPath(_: any, root: string, file: string) {
+  const data = fs.readFileSync(path.join(root, file), "utf-8");
   return data;
 }
 
