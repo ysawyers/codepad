@@ -10,24 +10,40 @@ interface FileOrFolder {
   children: FileOrFolder[] | null;
 }
 
+interface ActiveFile {
+  parent: DirNode | null;
+  parentPath: string | null;
+  name: string;
+  sidebarEl: HTMLElement;
+}
+
 interface EnviornmentProps {
   openNewTab: (name: string, data: string) => void;
+  updateActiveFile: (
+    parent: DirNode,
+    parentPath: string | null,
+    name: string,
+    sidebarEl: HTMLElement
+  ) => void;
 }
 
 class DirNode {
   el: HTMLElement;
+  parent: DirNode | null;
 
   parentPath: string | null;
   children: DirNode[] | null;
 
   // do not load all this bs at once.
   constructor(
+    parent: DirNode | null,
     depth: number,
     parentPath: string | null,
     name: string,
     children: FileOrFolder[] | null,
     props: EnviornmentProps
   ) {
+    this.parent = parent;
     this.parentPath = parentPath;
 
     if (children) {
@@ -54,6 +70,7 @@ class DirNode {
       for (let i = 0; i < children.length; i++) {
         this.children.push(
           new DirNode(
+            this,
             depth + 1,
             children[i].parentPath,
             children[i].name,
@@ -72,6 +89,7 @@ class DirNode {
       this.el.addEventListener("click", async () => {
         // @ts-ignore
         const data = await window.electronAPI.openFileFromPath(parentPath, name);
+        props.updateActiveFile(this.parent, parentPath, name, this.el);
         props.openNewTab(name, data);
       });
     }
@@ -94,6 +112,9 @@ class DirNode {
 export class Enviornment {
   directory: DirNode | null;
 
+  // ID: sidebar-item
+  activeFile: ActiveFile | null;
+
   landingEl: HTMLElement;
   cursors: Map<HTMLElement, Cursor>;
   foregroundedTab: HTMLElement | null;
@@ -108,6 +129,8 @@ export class Enviornment {
       .content.firstElementChild.cloneNode(true);
 
     if (!this.cursors.size) {
+      this.activeFile = null;
+      this.directory = null;
       this.initializeWelcomePage();
     }
   }
@@ -117,13 +140,11 @@ export class Enviornment {
 
     const newFile = document.getElementById("new-file");
     newFile.addEventListener("click", () => {
-      this.directory = null;
       this.openNewTab("untitled-0", "");
     });
 
     const openFile = document.getElementById("open-file");
     openFile.addEventListener("click", async () => {
-      this.directory = null;
       // @ts-ignore
       const file = await window.electronAPI.openFile();
       this.openNewTab(file.name, file.data);
@@ -136,9 +157,46 @@ export class Enviornment {
 
       this.landingEl.remove();
 
-      this.directory = new DirNode(1, folder.parentPath, folder.name, folder.children, {
+      this.directory = new DirNode(null, 1, folder.parentPath, folder.name, folder.children, {
         openNewTab: (name: string, data: string) => {
           this.openNewTab(name, data);
+        },
+
+        // TODO: Eventually will use this to add a future feature of viewing the path of current file at the top below open tabs
+        updateActiveFile: (
+          parent: DirNode,
+          parentPath: string | null,
+          name: string,
+          sidebarEl: HTMLElement
+        ) => {
+          if (this.activeFile) {
+            let curr = this.activeFile.parent;
+            while (curr) {
+              // @ts-ignore
+              curr.el.firstElementChild.style.backgroundColor = "";
+              curr = curr.parent;
+            }
+            this.activeFile.sidebarEl.style.color = "#cacdcc";
+            this.activeFile.sidebarEl.style.fontWeight = "400";
+            this.activeFile.sidebarEl.style.backgroundColor = "";
+          }
+
+          let curr = parent;
+          while (curr) {
+            // @ts-ignore
+            curr.el.firstElementChild.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
+            curr = curr.parent;
+          }
+          sidebarEl.style.color = "white";
+          sidebarEl.style.fontWeight = "bold";
+          sidebarEl.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
+
+          this.activeFile = {
+            parent,
+            parentPath,
+            name,
+            sidebarEl,
+          };
         },
       });
 
