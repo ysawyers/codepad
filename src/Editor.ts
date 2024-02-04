@@ -15,6 +15,7 @@ function createLineEl(): HTMLElement {
 
 export class Editor {
   private head: Line;
+  private cache: Map<number, Line>; // TODO: Implement for lazy loading + quick cursor jump
 
   constructor(fileText: string) {
     const start = performance.now();

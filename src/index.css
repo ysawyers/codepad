@@ -35,16 +35,13 @@ body {
 .main-container {
   display: flex;
   flex-direction: row;
-
-  /* fills the screen top-down */
   flex-grow: 1;
 }
 
 .workspace-container {
   display: flex;
   flex-direction: column;
-
-  /* fills the workspace left-right (sidebar not included) */
+  background-color: #1b1c26;
   flex-grow: 1;
 }
 
@@ -67,6 +64,7 @@ body {
 .sidebar-container {
   width: 12em;
   background-color: rgba(42, 38, 38, 0.95);
+  overflow-y: auto;
 }
 
 .sidebar-item-container {

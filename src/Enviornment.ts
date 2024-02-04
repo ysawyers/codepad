@@ -9,7 +9,6 @@ interface FileOrFolder {
 
 class DirNode {
   el: HTMLElement;
-  isOpen: boolean;
 
   parentPath: string | null;
   name: string; // ? keep if the state will live on the DOM?
@@ -18,12 +17,21 @@ class DirNode {
   constructor(parentPath: string | null, name: string, children: FileOrFolder[] | null, env: any) {
     this.parentPath = parentPath;
     this.name = name;
-    this.isOpen = false;
 
     if (children) {
-      const el = (document.getElementById("folder") as HTMLTemplateElement).content.cloneNode(true);
+      const el = (
+        document.getElementById("folder") as HTMLTemplateElement
+      ).content.firstElementChild.cloneNode(true);
       this.el = el as HTMLElement;
       this.el.firstElementChild.textContent = name;
+
+      this.el.firstElementChild.addEventListener("click", () => {
+        if (this.el.lastElementChild.children.length) {
+          this.collapse();
+        } else {
+          this.expand();
+        }
+      });
 
       this.children = [];
 
@@ -40,12 +48,9 @@ class DirNode {
       this.el.firstElementChild.textContent = name;
 
       this.el.addEventListener("click", async () => {
-        if (!this.isOpen) {
-          // @ts-ignore
-          const data = await window.electronAPI.openFileFromPath(parentPath, name);
-          env.openNewTab(name, data);
-          this.isOpen = true;
-        }
+        // @ts-ignore
+        const data = await window.electronAPI.openFileFromPath(parentPath, name);
+        env.openNewTab(name, data);
       });
     }
   }
@@ -56,7 +61,11 @@ class DirNode {
         this.el.lastElementChild.append(this.children[i].el);
   }
 
-  collapse() {}
+  collapse() {
+    if (this.children)
+      for (let i = 0; i < this.children.length; i++)
+        this.el.lastElementChild.removeChild(this.el.lastElementChild.lastElementChild);
+  }
 }
 
 export class Enviornment {
@@ -87,17 +96,14 @@ export class Enviornment {
     const newFile = document.getElementById("new-file");
     newFile.addEventListener("click", () => {
       this.directory = null;
-      this.landingEl.remove();
       this.openNewTab("untitled-0", "");
     });
 
     const openFile = document.getElementById("open-file");
     openFile.addEventListener("click", async () => {
       this.directory = null;
-
       // @ts-ignore
       const file = await window.electronAPI.openFile();
-      this.landingEl.remove();
       this.openNewTab(file.name, file.data);
     });
 
@@ -106,9 +112,10 @@ export class Enviornment {
       // @ts-ignore
       const folder: FileOrFolder = await window.electronAPI.openFolder();
 
+      this.landingEl.remove();
+
       this.directory = new DirNode(folder.parentPath, folder.name, folder.children, {
         openNewTab: (name: string, data: string) => {
-          this.landingEl.remove();
           this.openNewTab(name, data);
         },
       });
@@ -119,6 +126,8 @@ export class Enviornment {
   }
 
   openNewTab(name: string, data: string) {
+    this.landingEl.remove();
+
     if (this.foregroundedTab) {
       const prevTabCursor = this.cursors.get(this.foregroundedTab);
       prevTabCursor.background();
@@ -146,15 +155,19 @@ export class Enviornment {
   switchTab() {}
 
   closeTab(existingTab: HTMLElement) {
+    existingTab.remove();
+
     const cursor = this.cursors.get(existingTab);
     cursor.background();
-    existingTab.remove();
     this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
 
     if (!this.cursors.size) {
       this.foregroundedTab = null;
-      document.getElementById("workspace-group").appendChild(this.landingEl);
+      if (!this.directory) document.getElementById("workspace-group").appendChild(this.landingEl);
     } else {
+      const cursor = this.cursors.get(this.foregroundedTab);
+      cursor?.background();
+
       for (const key of this.cursors.keys()) {
         this.foregroundedTab = key;
         const cursor = this.cursors.get(this.foregroundedTab);
@@ -162,9 +175,5 @@ export class Enviornment {
         break;
       }
     }
-  }
-
-  openFile(fileName: string, data: string) {
-    console.log(this);
   }
 }
