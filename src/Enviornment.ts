@@ -1,5 +1,8 @@
 import { Cursor } from "./Cursor";
 
+// TODO: (PERFORMANCE) LAZY LOAD LINES
+// TODO: (PERFROAMNCE) LOAD ON REQUEST FILES UNDER DIRECTORY AFTER EXPAND
+
 // TODO: Work on tab precedence eventually; currently just in order of what has been appended to the Map
 interface FileOrFolder {
   parentPath: string | null;
@@ -7,23 +10,36 @@ interface FileOrFolder {
   children: FileOrFolder[] | null;
 }
 
+interface EnviornmentProps {
+  openNewTab: (name: string, data: string) => void;
+}
+
 class DirNode {
   el: HTMLElement;
 
   parentPath: string | null;
-  name: string; // ? keep if the state will live on the DOM?
   children: DirNode[] | null;
 
-  constructor(parentPath: string | null, name: string, children: FileOrFolder[] | null, env: any) {
+  // do not load all this bs at once.
+  constructor(
+    depth: number,
+    parentPath: string | null,
+    name: string,
+    children: FileOrFolder[] | null,
+    props: EnviornmentProps
+  ) {
     this.parentPath = parentPath;
-    this.name = name;
 
     if (children) {
-      const el = (
+      this.el = (
         document.getElementById("folder") as HTMLTemplateElement
-      ).content.firstElementChild.cloneNode(true);
-      this.el = el as HTMLElement;
-      this.el.firstElementChild.textContent = name;
+      ).content.firstElementChild.cloneNode(true) as HTMLElement;
+
+      this.el.firstElementChild.firstElementChild.className = "fa fa-chevron-right fa";
+      this.el.firstElementChild.className = "sidebar-item";
+      // @ts-ignore
+      this.el.firstElementChild.firstElementChild.style.paddingLeft = `${depth * 8}px`;
+      this.el.firstElementChild.lastElementChild.textContent = name;
 
       this.el.firstElementChild.addEventListener("click", () => {
         if (this.el.lastElementChild.children.length) {
@@ -37,34 +53,41 @@ class DirNode {
 
       for (let i = 0; i < children.length; i++) {
         this.children.push(
-          new DirNode(children[i].parentPath, children[i].name, children[i].children, env)
+          new DirNode(
+            depth + 1,
+            children[i].parentPath,
+            children[i].name,
+            children[i].children,
+            props
+          )
         );
       }
     } else {
-      this.el = (
-        document.getElementById("file") as HTMLTemplateElement
-      ).content.firstElementChild.cloneNode(true) as HTMLElement;
-
-      this.el.firstElementChild.textContent = name;
+      // might be bad for very large folders
+      this.el = document.createElement("p");
+      this.el.className = "sidebar-item";
+      this.el.textContent = name;
+      this.el.style.paddingLeft = `${depth * 8}px`;
 
       this.el.addEventListener("click", async () => {
         // @ts-ignore
         const data = await window.electronAPI.openFileFromPath(parentPath, name);
-        env.openNewTab(name, data);
+        props.openNewTab(name, data);
       });
     }
   }
 
   expand() {
-    if (this.children)
-      for (let i = 0; i < this.children.length; i++)
-        this.el.lastElementChild.append(this.children[i].el);
+    const container = this.el.firstElementChild as HTMLElement;
+    container.firstElementChild.className = "fa fa-chevron-down fa";
+    for (let i = 0; i < this.children.length; i++)
+      this.el.lastElementChild.appendChild(this.children[i].el);
   }
 
   collapse() {
-    if (this.children)
-      for (let i = 0; i < this.children.length; i++)
-        this.el.lastElementChild.removeChild(this.el.lastElementChild.lastElementChild);
+    const container = this.el.firstElementChild as HTMLElement;
+    container.firstElementChild.className = "fa fa-chevron-right";
+    for (let i = 0; i < this.children.length; i++) this.children[i].el.remove();
   }
 }
 
@@ -84,7 +107,6 @@ export class Enviornment {
       // @ts-ignore
       .content.firstElementChild.cloneNode(true);
 
-    // EDGE CASE: if enviornment is not opened with project automatically
     if (!this.cursors.size) {
       this.initializeWelcomePage();
     }
@@ -114,14 +136,15 @@ export class Enviornment {
 
       this.landingEl.remove();
 
-      this.directory = new DirNode(folder.parentPath, folder.name, folder.children, {
+      this.directory = new DirNode(1, folder.parentPath, folder.name, folder.children, {
         openNewTab: (name: string, data: string) => {
           this.openNewTab(name, data);
         },
       });
-      this.directory.expand();
 
       document.getElementById("sidebar").appendChild(this.directory.el);
+
+      this.directory.expand();
     });
   }
 
