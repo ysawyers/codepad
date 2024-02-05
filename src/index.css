@@ -68,33 +68,61 @@ body {
   overflow-y: auto;
 }
 
-.tab {
+.tab-container {
   display: flex;
   align-items: center;
   padding-top: 8px;
   padding-bottom: 8px;
-  border-right: 1px solid #2b2b2b;
-  color: white;
-  background-color: blue !important;
-  border-top-right-radius: 8px;
-  border-top-left-radius: 8px;
+  padding-left: 10px;
+  padding-right: 10px;
+  border-top: 1px solid #a855f7;
+}
+
+.tab-container:hover {
+  cursor: pointer;
+  background-color: rgba(219, 221, 223, 0.1);
+}
+
+.tab-container:hover .tab-close-container {
+  visibility: visible;
 }
 
 .tab-name {
+  text-overflow: ellipsis;
+  flex-grow: 1;
   font-family: "Barlow", sans-serif;
   color: #b8b8b8;
-  font-size: 14px;
-  font-weight: 600;
-  margin-left: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 8em;
+}
+
+.tab-close-container {
+  /* display: flex;
+  justify-content: center;
+  align-items: center; */
+
+  width: 14px;
+  height: 13px;
+  border-radius: 1px;
+  padding: 1px;
+  cursor: pointer;
+  visibility: hidden;
+  margin-left: 5px;
+}
+
+.tab-close-container:hover {
+  background-color: rgba(219, 221, 223, 0.1);
 }
 
 .tab-close-button {
-  height: 10px;
-  width: 10px;
-  background-color: red;
-  margin-left: 12px;
-  margin-right: 10px;
+  font-size: 12px;
+  color: white;
 }
+
+/* .tab-close-button:hover {
+  background-color: rgba(219, 221, 223, 0.1);
+} */
 
 .editor-container {
   background-color: #1b1c26;

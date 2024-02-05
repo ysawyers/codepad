@@ -162,7 +162,6 @@ export class Enviornment {
           this.openNewTab(name, data);
         },
 
-        // TODO: Eventually will use this to add a future feature of viewing the path of current file at the top below open tabs
         updateActiveFile: (
           parent: DirNode,
           parentPath: string | null,
@@ -209,27 +208,21 @@ export class Enviornment {
   openNewTab(name: string, data: string) {
     this.landingEl.remove();
 
-    if (this.foregroundedTab) {
-      const prevTabCursor = this.cursors.get(this.foregroundedTab);
-      prevTabCursor.background();
-    }
+    const clone = (document.getElementById("tab") as HTMLTemplateElement).content.cloneNode(true);
+    const newForegroundedTab = clone.firstElementChild as HTMLElement;
+    newForegroundedTab.firstElementChild.textContent = name;
 
-    // @ts-ignore
-    const tab = document.getElementById("tab").content.cloneNode(true);
-    const newTab = tab.firstElementChild as HTMLElement;
-    newTab.firstElementChild.textContent = name;
+    // (newForegroundedTab.lastElementChild as HTMLElement).addEventListener("click", () => {
+    //   console.log("close ya tab");
+    // });
 
-    (newTab.lastElementChild as HTMLElement).addEventListener("click", () => {
-      this.closeTab(newTab);
-    });
+    this.updateForegroundedTab(newForegroundedTab);
 
-    const tabs = document.getElementById("tab-group");
-    tabs.appendChild(newTab);
+    document.getElementById("tab-group").appendChild(newForegroundedTab);
 
-    const newTabCursor = new Cursor(0, 0, data);
-    this.cursors.set(newTab, newTabCursor);
-    this.foregroundedTab = newTab;
-    newTabCursor.foreground();
+    const tabCursor = new Cursor(0, 0, data);
+    this.cursors.set(newForegroundedTab, tabCursor);
+    tabCursor.foreground();
   }
 
   // TODO
@@ -256,5 +249,22 @@ export class Enviornment {
         break;
       }
     }
+  }
+
+  updateForegroundedTab(newForegroundedTab: HTMLElement) {
+    if (this.foregroundedTab) {
+      this.foregroundedTab.style.backgroundColor = "";
+      this.foregroundedTab.firstElementChild.style.color = "#b8b8b8";
+      this.foregroundedTab.firstElementChild.style.fontWeight = "400";
+
+      const prevTabCursor = this.cursors.get(this.foregroundedTab);
+      prevTabCursor.background();
+    }
+
+    newForegroundedTab.style.backgroundColor = "#1b1c26";
+    newForegroundedTab.firstElementChild.style.color = "white";
+    newForegroundedTab.firstElementChild.style.fontWeight = "bold";
+
+    this.foregroundedTab = newForegroundedTab;
   }
 }
