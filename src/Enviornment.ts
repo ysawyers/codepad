@@ -3,7 +3,6 @@ import { Cursor } from "./Cursor";
 // TODO: (PERFORMANCE) LAZY LOAD LINES
 // TODO: (PERFROAMNCE) LOAD ON REQUEST FILES UNDER DIRECTORY AFTER EXPAND
 
-// TODO: Work on tab precedence eventually; currently just in order of what has been appended to the Map
 interface FileOrFolder {
   parentPath: string | null;
   name: string;
@@ -112,15 +111,17 @@ class DirNode {
 export class Enviornment {
   directory: DirNode | null;
 
-  // ID: sidebar-item
   activeFile: ActiveFile | null;
 
   landingEl: HTMLElement;
+
   cursors: Map<HTMLElement, Cursor>;
   foregroundedTab: HTMLElement | null;
+  tabPrecedence: HTMLElement[];
 
   constructor() {
     this.cursors = new Map<HTMLElement, Cursor>();
+    this.tabPrecedence = [];
     this.foregroundedTab = null;
 
     this.landingEl = document
@@ -209,12 +210,18 @@ export class Enviornment {
     this.landingEl.remove();
 
     const clone = (document.getElementById("tab") as HTMLTemplateElement).content.cloneNode(true);
+    // @ts-ignore
     const newForegroundedTab = clone.firstElementChild as HTMLElement;
     newForegroundedTab.firstElementChild.textContent = name;
 
-    // (newForegroundedTab.lastElementChild as HTMLElement).addEventListener("click", () => {
-    //   console.log("close ya tab");
-    // });
+    newForegroundedTab.addEventListener("click", (e) => {
+      // @ts-ignore
+      if (e.target.className === "tab-close-container") {
+        this.closeTab(newForegroundedTab);
+      } else {
+        this.switchTab(newForegroundedTab);
+      }
+    });
 
     this.updateForegroundedTab(newForegroundedTab);
 
@@ -223,30 +230,40 @@ export class Enviornment {
     const tabCursor = new Cursor(0, 0, data);
     this.cursors.set(newForegroundedTab, tabCursor);
     tabCursor.foreground();
+    this.tabPrecedence.push(newForegroundedTab);
   }
 
-  // TODO
-  switchTab() {}
+  switchTab(newForegroundedTab: HTMLElement) {
+    const oldCursor = this.cursors.get(this.foregroundedTab);
+    oldCursor.background();
+
+    const newCursor = this.cursors.get(newForegroundedTab);
+    newCursor.foreground();
+
+    this.updateForegroundedTab(newForegroundedTab);
+  }
 
   closeTab(existingTab: HTMLElement) {
+    const oldCursor = this.cursors.get(existingTab);
+    oldCursor.background();
+
+    this.cursors.delete(existingTab);
+
     existingTab.remove();
 
-    const cursor = this.cursors.get(existingTab);
-    cursor.background();
-    this.cursors.delete(existingTab); // any changed data will be deleted if not manually saved!
-
-    if (!this.cursors.size) {
+    if (existingTab.isSameNode(this.foregroundedTab)) {
       this.foregroundedTab = null;
-      if (!this.directory) document.getElementById("workspace-group").appendChild(this.landingEl);
-    } else {
-      const cursor = this.cursors.get(this.foregroundedTab);
-      cursor?.background();
 
-      for (const key of this.cursors.keys()) {
-        this.foregroundedTab = key;
-        const cursor = this.cursors.get(this.foregroundedTab);
-        cursor.foreground();
-        break;
+      while (this.tabPrecedence.length) {
+        const tabFallback = this.tabPrecedence[this.tabPrecedence.length - 1];
+        if (this.cursors.has(tabFallback)) {
+          const newCursor = this.cursors.get(tabFallback);
+          newCursor.foreground();
+
+          this.updateForegroundedTab(tabFallback);
+          break;
+        }
+        this.tabPrecedence.pop();
       }
     }
   }
@@ -254,7 +271,9 @@ export class Enviornment {
   updateForegroundedTab(newForegroundedTab: HTMLElement) {
     if (this.foregroundedTab) {
       this.foregroundedTab.style.backgroundColor = "";
+      // @ts-ignore
       this.foregroundedTab.firstElementChild.style.color = "#b8b8b8";
+      // @ts-ignore
       this.foregroundedTab.firstElementChild.style.fontWeight = "400";
 
       const prevTabCursor = this.cursors.get(this.foregroundedTab);
@@ -262,7 +281,9 @@ export class Enviornment {
     }
 
     newForegroundedTab.style.backgroundColor = "#1b1c26";
+    // @ts-ignore
     newForegroundedTab.firstElementChild.style.color = "white";
+    // @ts-ignore
     newForegroundedTab.firstElementChild.style.fontWeight = "bold";
 
     this.foregroundedTab = newForegroundedTab;
