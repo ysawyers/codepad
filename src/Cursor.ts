@@ -171,6 +171,21 @@ export class Cursor {
 
     let curr = this.file.getHead();
     while (curr) {
+      const lineEl = curr.el;
+      curr.el.addEventListener("mousedown", (e) => {
+        let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
+
+        let col = Math.round(distanceFromLeft / 7.8);
+        if (col > lineEl.firstElementChild.textContent.length) {
+          col = lineEl.firstElementChild.textContent.length;
+        }
+        this.col = col;
+
+        const newLine = this.file.getLineFromNode(lineEl);
+        this.renderCursor(this.lineRef, newLine);
+        this.updateCurrentLine(newLine);
+      });
+
       lineGroup.appendChild(curr.el);
       curr = curr.next;
     }

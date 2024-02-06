@@ -76,11 +76,16 @@ export class Editor {
     console.log("took", performance.now() - start, "ms to load into memory.");
   }
 
-  // getLineFromNode(line: number): Line {
-  //   let currLine = this.head;
-  //   for (let i = 0; i < line; i++) currLine = currLine.next;
-  //   return currLine;
-  // }
+  getLineFromNode(el: HTMLElement): Line | null {
+    let curr = this.head;
+    while (curr) {
+      if (curr.el.isSameNode(el)) {
+        return curr;
+      }
+      curr = curr.next;
+    }
+    return null;
+  }
 
   getHead() {
     return this.head;
