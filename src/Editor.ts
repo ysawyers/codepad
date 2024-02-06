@@ -1,31 +1,26 @@
+interface CursorProps {
+  attatchListenerToNewLine: (newLineEl: HTMLElement) => void;
+}
+
 interface Line {
   el: HTMLElement;
   prev: Line | null;
   next: Line | null;
 }
 
-function createLineEl(): HTMLElement {
-  const lineContainer = document.createElement("div");
-  lineContainer.className = "line";
-  const lineSpan = document.createElement("span");
-  lineSpan.className = "default-line-text";
-  lineContainer.appendChild(lineSpan);
-  return lineContainer;
-}
-
 export class Editor {
   private head: Line;
-  private cache: Map<number, Line>; // TODO: Implement for lazy loading + quick cursor jump
+  private cursorProps: CursorProps;
 
-  constructor(fileText: string) {
-    const start = performance.now();
+  constructor(fileText: string, cursorProps: CursorProps) {
+    this.cursorProps = cursorProps;
 
     this.head = null;
     if (!fileText.length) {
       this.head = {
         next: null,
         prev: null,
-        el: createLineEl(),
+        el: this.createLineEl(),
       };
     }
 
@@ -39,7 +34,7 @@ export class Editor {
         const newLine: Line = {
           next: null,
           prev: curr,
-          el: createLineEl(),
+          el: this.createLineEl(),
         };
         newLine.el.firstElementChild.textContent = buff;
 
@@ -60,7 +55,7 @@ export class Editor {
       const newLine: Line = {
         next: null,
         prev: curr,
-        el: createLineEl(),
+        el: this.createLineEl(),
       };
       newLine.el.firstElementChild.textContent = buff;
 
@@ -72,16 +67,16 @@ export class Editor {
         curr = this.head;
       }
     }
-
-    console.log("took", performance.now() - start, "ms to load into memory.");
   }
 
-  getLineFromNode(el: HTMLElement): Line | null {
+  getLineFromNode(el: HTMLElement): [Line | null, number] | null {
+    let row = 0;
     let curr = this.head;
     while (curr) {
       if (curr.el.isSameNode(el)) {
-        return curr;
+        return [curr, row];
       }
+      row++;
       curr = curr.next;
     }
     return null;
@@ -107,7 +102,7 @@ export class Editor {
     const newLine: Line = {
       prev: prevLine,
       next: prevLine.next,
-      el: createLineEl(),
+      el: this.createLineEl(),
     };
     // assign overflow from previous line to new line
     newLine.el.firstElementChild.textContent = textOverflow;
@@ -138,6 +133,18 @@ export class Editor {
       return 0;
     }
     return currLine.prev.el.textContent.length - textOverflow.length;
+  }
+
+  createLineEl(): HTMLElement {
+    const lineContainer = document.createElement("div");
+    lineContainer.className = "line";
+    const lineSpan = document.createElement("span");
+    lineSpan.className = "default-line-text";
+    lineContainer.appendChild(lineSpan);
+
+    this.cursorProps.attatchListenerToNewLine(lineContainer);
+
+    return lineContainer;
   }
 
   // chain nodes together by \n and return the entire content of the new modified file

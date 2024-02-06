@@ -15,21 +15,118 @@ export class Cursor {
   private anchor: number | null;
 
   private file: Editor;
-  private eventListner: any;
+  private keydownEventListener: any;
 
   constructor(row: number, col: number, fileText: string) {
     this.row = row;
     this.col = col;
     this.anchor = null;
-    this.file = new Editor(fileText);
+    this.file = new Editor(fileText, {
+      attatchListenerToNewLine: (newLineEl: HTMLElement) => {
+        newLineEl.addEventListener("mousedown", (e) => {
+          let distanceFromLeft = e.clientX - newLineEl.parentElement.getBoundingClientRect().left;
+
+          let col = Math.round(distanceFromLeft / 7.8);
+          if (col > newLineEl.firstElementChild.textContent.length) {
+            col = newLineEl.firstElementChild.textContent.length;
+          }
+          this.col = col;
+
+          const [newLine, newRow] = this.file.getLineFromNode(newLineEl);
+          this.row = newRow;
+          this.renderCursor(this.lineRef, newLine);
+          this.updateCurrentLine(newLine);
+        });
+      },
+    });
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
 
     this.updateCurrentLine(this.file.getHead());
     this.renderCursor(null, this.lineRef);
+  }
 
-    this.eventListner = (e: KeyboardEvent) => {
+  private navigateLeft() {
+    this.anchor = null;
+    this.col--;
+  }
+
+  private navigateRight() {
+    this.anchor = null;
+    this.col++;
+  }
+
+  private navigateUp() {
+    this.row--;
+    if (!this.anchor) this.anchor = this.col;
+    if (this.lineRef.prev) {
+      const textLength = this.lineRef.prev.el.firstElementChild.textContent.length;
+      if (this.anchor > textLength) {
+        this.col = textLength;
+      } else {
+        this.col = this.anchor;
+      }
+      this.updateCurrentLine(this.lineRef.prev);
+    }
+  }
+
+  private navigateDown() {
+    this.row++;
+    if (!this.anchor) this.anchor = this.col;
+    if (this.lineRef.next) {
+      const textLength = this.lineRef.next.el.firstElementChild.textContent.length;
+      if (this.anchor > textLength) {
+        this.col = textLength;
+      } else {
+        this.col = this.anchor;
+      }
+      this.updateCurrentLine(this.lineRef.next);
+    }
+  }
+
+  private renderCursor(prevLine: Line | null, line: Line) {
+    if (prevLine) prevLine.el.removeChild(prevLine.el.lastElementChild);
+    const cursor = document.createElement("div");
+    cursor.className = "cursor";
+    cursor.style.marginLeft = `${this.col * 7.8}px`;
+    line.el.appendChild(cursor);
+  }
+
+  private updateCurrentLine(currLine: Line) {
+    if (this.lineRef) this.lineRef.el.style.backgroundColor = "";
+    currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
+    this.lineRef = currLine;
+  }
+
+  foreground() {
+    document.getElementById("workspace-group").appendChild(this.editorEl);
+    const lineGroup = document.getElementById("line-group");
+
+    let curr = this.file.getHead();
+    while (curr) {
+      const lineEl = curr.el;
+
+      curr.el.addEventListener("mousedown", (e) => {
+        let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
+
+        let col = Math.round(distanceFromLeft / 7.8);
+        if (col > lineEl.firstElementChild.textContent.length) {
+          col = lineEl.firstElementChild.textContent.length;
+        }
+        this.col = col;
+
+        const [newLine, newRow] = this.file.getLineFromNode(lineEl);
+        this.row = newRow;
+        this.renderCursor(this.lineRef, newLine);
+        this.updateCurrentLine(newLine);
+      });
+
+      lineGroup.appendChild(lineEl);
+      curr = curr.next;
+    }
+
+    this.keydownEventListener = (e: KeyboardEvent) => {
       const prevLine = this.lineRef;
 
       switch (e.key) {
@@ -111,91 +208,17 @@ export class Cursor {
 
       this.renderCursor(prevLine, this.lineRef);
     };
-  }
 
-  private navigateLeft() {
-    this.anchor = null;
-    this.col--;
-  }
+    this.editorEl.addEventListener("scroll", (e: Event) => {
+      // TODO: Will be used to lazy load lines.
+    });
 
-  private navigateRight() {
-    this.anchor = null;
-    this.col++;
-  }
-
-  private navigateUp() {
-    this.row--;
-    if (!this.anchor) this.anchor = this.col;
-    if (this.lineRef.prev) {
-      const textLength = this.lineRef.prev.el.firstElementChild.textContent.length;
-      if (this.anchor > textLength) {
-        this.col = textLength;
-      } else {
-        this.col = this.anchor;
-      }
-      this.updateCurrentLine(this.lineRef.prev);
-    }
-  }
-
-  private navigateDown() {
-    this.row++;
-    if (!this.anchor) this.anchor = this.col;
-    if (this.lineRef.next) {
-      const textLength = this.lineRef.next.el.firstElementChild.textContent.length;
-      if (this.anchor > textLength) {
-        this.col = textLength;
-      } else {
-        this.col = this.anchor;
-      }
-      this.updateCurrentLine(this.lineRef.next);
-    }
-  }
-
-  private renderCursor(prevLine: Line | null, line: Line) {
-    if (prevLine) prevLine.el.removeChild(prevLine.el.lastElementChild);
-    const cursor = document.createElement("div");
-    cursor.className = "cursor";
-    cursor.style.marginLeft = `${this.col * 7.8}px`;
-    line.el.appendChild(cursor);
-  }
-
-  private updateCurrentLine(currLine: Line) {
-    if (this.lineRef) this.lineRef.el.style.backgroundColor = "";
-    currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
-    this.lineRef = currLine;
-  }
-
-  foreground() {
-    document.getElementById("workspace-group").appendChild(this.editorEl);
-    const lineGroup = document.getElementById("line-group");
-
-    let curr = this.file.getHead();
-    while (curr) {
-      const lineEl = curr.el;
-      curr.el.addEventListener("mousedown", (e) => {
-        let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
-
-        let col = Math.round(distanceFromLeft / 7.8);
-        if (col > lineEl.firstElementChild.textContent.length) {
-          col = lineEl.firstElementChild.textContent.length;
-        }
-        this.col = col;
-
-        const newLine = this.file.getLineFromNode(lineEl);
-        this.renderCursor(this.lineRef, newLine);
-        this.updateCurrentLine(newLine);
-      });
-
-      lineGroup.appendChild(curr.el);
-      curr = curr.next;
-    }
-
-    document.addEventListener("keydown", this.eventListner);
+    document.addEventListener("keydown", this.keydownEventListener);
   }
 
   // cursor is "backgrounded" by default
   background() {
     this.editorEl.remove();
-    document.removeEventListener("keydown", this.eventListner);
+    document.removeEventListener("keydown", this.keydownEventListener);
   }
 }
