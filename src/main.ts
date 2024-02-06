@@ -3,8 +3,8 @@ import path from "path";
 import fs from "fs";
 
 interface FileOrFolder {
-  parentPath: string | null;
-  name: string;
+  path: string | null;
+  basename: string;
   children: FileOrFolder[] | null;
 }
 
@@ -32,40 +32,51 @@ async function handleFolderOpen() {
   });
 
   const folder: FileOrFolder = {
-    parentPath: path.parse(filePaths[0]).dir,
-    name: path.parse(filePaths[0]).base,
+    path: filePaths[0],
+    basename: path.parse(filePaths[0]).base,
     children: [],
   };
 
-  let subFolders = [folder];
-
   if (!canceled) {
-    while (subFolders.length) {
-      let currentFolder = subFolders.pop();
+    const files = fs.readdirSync(folder.path);
+    for (let i = 0; i < files.length; i++) {
+      const filePath = path.join(folder.path, files[i]);
 
-      const files = fs.readdirSync(path.join(currentFolder.parentPath, currentFolder.name));
-      for (let i = 0; i < files.length; i++) {
-        const parentPath = path.join(currentFolder.parentPath, currentFolder.name);
+      let fileOrFolder: FileOrFolder = {
+        path: filePath,
+        basename: files[i],
+        children: null,
+      };
+      if (fs.lstatSync(filePath).isDirectory()) fileOrFolder.children = [];
 
-        const isFolder = fs.lstatSync(path.join(parentPath, files[i])).isDirectory();
-
-        let fileOrFolder: FileOrFolder;
-        if (isFolder) {
-          fileOrFolder = { parentPath, name: files[i], children: [] };
-          subFolders.push(fileOrFolder);
-        } else {
-          fileOrFolder = { parentPath, name: files[i], children: null };
-        }
-        currentFolder.children.push(fileOrFolder);
-      }
+      folder.children.push(fileOrFolder);
     }
   }
   return folder;
 }
 
-async function openFileFromPath(_: any, root: string, file: string) {
-  const data = fs.readFileSync(path.join(root, file), "utf-8");
+async function openFileFromPath(_: any, filePath: string) {
+  const data = fs.readFileSync(filePath, "utf-8");
   return data;
+}
+
+async function openFolderFromPath(_: any, folderPath: string) {
+  let children: FileOrFolder[] = [];
+
+  const files = fs.readdirSync(folderPath);
+  for (let i = 0; i < files.length; i++) {
+    const filePath = path.join(folderPath, files[i]);
+
+    let fileOrFolder: FileOrFolder = {
+      path: filePath,
+      basename: files[i],
+      children: null,
+    };
+    if (fs.lstatSync(filePath).isDirectory()) fileOrFolder.children = [];
+
+    children.push(fileOrFolder);
+  }
+  return children;
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -98,6 +109,7 @@ app.on("ready", () => {
   ipcMain.handle("openFile", handleFileOpen);
   ipcMain.handle("openFolder", handleFolderOpen);
   ipcMain.handle("openFileFromPath", openFileFromPath);
+  ipcMain.handle("openFolderFromPath", openFolderFromPath);
 
   // create initial window
   createWindow();
