@@ -17,13 +17,13 @@ interface ActiveFile {
 }
 
 interface EnviornmentProps {
-  openNewTab: (name: string, data: string) => void;
-  updateActiveFile: (
-    parent: DirNode,
-    parentPath: string | null,
-    name: string,
-    sidebarEl: HTMLElement
-  ) => void;
+  openNewTab: (dirNode: DirNode, name: string, data: string) => void;
+  // updateActiveFile: (
+  //   parent: DirNode,
+  //   parentPath: string | null,
+  //   name: string,
+  //   sidebarEl: HTMLElement
+  // ) => void;
 }
 
 class DirNode {
@@ -80,8 +80,8 @@ class DirNode {
       this.el.addEventListener("click", async () => {
         // @ts-ignore
         const data = await window.electronAPI.openFileFromPath(fileOrFolder.path);
-        props.updateActiveFile(this.parent, fileOrFolder.path, fileOrFolder.basename, this.el);
-        props.openNewTab(fileOrFolder.basename, data);
+        // props.updateActiveFile(this.parent, fileOrFolder.path, fileOrFolder.basename, this.el);
+        props.openNewTab(this, fileOrFolder.basename, data);
       });
     }
   }
@@ -111,16 +111,14 @@ class DirNode {
 export class Enviornment {
   directory: DirNode | null;
 
-  activeFile: ActiveFile | null;
-
   landingEl: HTMLElement;
 
-  cursors: Map<HTMLElement, Cursor>;
+  cursors: Map<HTMLElement, [Cursor, DirNode | null]>;
   foregroundedTab: HTMLElement | null;
   tabPrecedence: HTMLElement[];
 
   constructor() {
-    this.cursors = new Map<HTMLElement, Cursor>();
+    this.cursors = new Map<HTMLElement, [Cursor, DirNode]>();
     this.tabPrecedence = [];
     this.foregroundedTab = null;
 
@@ -130,7 +128,6 @@ export class Enviornment {
       .content.firstElementChild.cloneNode(true);
 
     if (!this.cursors.size) {
-      this.activeFile = null;
       this.directory = null;
       this.initializeWelcomePage();
     }
@@ -141,14 +138,14 @@ export class Enviornment {
 
     const newFile = document.getElementById("new-file");
     newFile.addEventListener("click", () => {
-      this.openNewTab("untitled-0", "");
+      this.openNewTab(null, "untitled-0", "");
     });
 
     const openFile = document.getElementById("open-file");
     openFile.addEventListener("click", async () => {
       // @ts-ignore
       const file = await window.electronAPI.openFile();
-      this.openNewTab(file.name, file.data);
+      this.openNewTab(null, file.name, file.data);
     });
 
     const openFolder = document.getElementById("open-folder");
@@ -159,45 +156,46 @@ export class Enviornment {
       this.landingEl.remove();
 
       this.directory = new DirNode(null, 1, folder, {
-        openNewTab: (name: string, data: string) => {
-          this.openNewTab(name, data);
+        openNewTab: (dirNode: DirNode, name: string, data: string) => {
+          // after this foregroundedTab will have the value of the HTMLElement of the newly opened tab
+          this.openNewTab(dirNode, name, data);
         },
 
-        updateActiveFile: (
-          parent: DirNode,
-          parentPath: string | null,
-          name: string,
-          sidebarEl: HTMLElement
-        ) => {
-          if (this.activeFile) {
-            let curr = this.activeFile.parent;
-            while (curr) {
-              // @ts-ignore
-              curr.el.firstElementChild.style.backgroundColor = "";
-              curr = curr.parent;
-            }
-            this.activeFile.sidebarEl.style.color = "#cacdcc";
-            this.activeFile.sidebarEl.style.fontWeight = "400";
-            this.activeFile.sidebarEl.style.backgroundColor = "";
-          }
+        // updateActiveFile: (
+        //   parent: DirNode,
+        //   parentPath: string | null,
+        //   name: string,
+        //   sidebarEl: HTMLElement
+        // ) => {
+        // if (this.activeFile) {
+        //   let curr = this.activeFile.parent;
+        //   while (curr) {
+        //     // @ts-ignore
+        //     curr.el.firstElementChild.style.backgroundColor = "";
+        //     curr = curr.parent;
+        //   }
+        //   this.activeFile.sidebarEl.style.color = "#cacdcc";
+        //   this.activeFile.sidebarEl.style.fontWeight = "400";
+        //   this.activeFile.sidebarEl.style.backgroundColor = "";
+        // }
 
-          let curr = parent;
-          while (curr) {
-            // @ts-ignore
-            curr.el.firstElementChild.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
-            curr = curr.parent;
-          }
-          sidebarEl.style.color = "white";
-          sidebarEl.style.fontWeight = "bold";
-          sidebarEl.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
+        // let curr = parent;
+        // while (curr) {
+        //   // @ts-ignore
+        //   curr.el.firstElementChild.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
+        //   curr = curr.parent;
+        // }
+        // sidebarEl.style.color = "white";
+        // sidebarEl.style.fontWeight = "bold";
+        // sidebarEl.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
 
-          this.activeFile = {
-            parent,
-            parentPath,
-            name,
-            sidebarEl,
-          };
-        },
+        //   this.activeFile = {
+        //     parent,
+        //     parentPath,
+        //     name,
+        //     sidebarEl,
+        //   };
+        // },
       });
 
       document.getElementById("sidebar").appendChild(this.directory.el);
@@ -206,7 +204,7 @@ export class Enviornment {
     });
   }
 
-  openNewTab(name: string, data: string) {
+  openNewTab(dirNode: DirNode | null, name: string, data: string) {
     this.landingEl.remove();
 
     const clone = (document.getElementById("tab") as HTMLTemplateElement).content.cloneNode(true);
@@ -223,29 +221,43 @@ export class Enviornment {
       }
     });
 
-    this.updateForegroundedTab(newForegroundedTab);
+    this.updateForegroundedTab(dirNode, newForegroundedTab);
 
     document.getElementById("tab-group").appendChild(newForegroundedTab);
 
     const tabCursor = new Cursor(0, 0, data);
-    this.cursors.set(newForegroundedTab, tabCursor);
+    this.cursors.set(newForegroundedTab, [tabCursor, dirNode]);
     tabCursor.foreground();
     this.tabPrecedence.push(newForegroundedTab);
   }
 
   switchTab(newForegroundedTab: HTMLElement) {
-    const oldCursor = this.cursors.get(this.foregroundedTab);
+    const [oldCursor, _] = this.cursors.get(this.foregroundedTab);
     oldCursor.background();
 
-    const newCursor = this.cursors.get(newForegroundedTab);
+    const [newCursor, newDirNode] = this.cursors.get(newForegroundedTab);
     newCursor.foreground();
 
-    this.updateForegroundedTab(newForegroundedTab);
+    this.updateForegroundedTab(newDirNode, newForegroundedTab);
   }
 
   closeTab(existingTab: HTMLElement) {
-    const oldCursor = this.cursors.get(existingTab);
+    const [oldCursor, oldDirNode] = this.cursors.get(existingTab);
     oldCursor.background();
+
+    // have to copy the code here from the updateForeground function because of edge case:
+    // tab being deleted will be removed from DOM so state does not matter but the state of the sidebar must be updated.
+    if (oldDirNode) {
+      let curr = oldDirNode.parent;
+      while (curr) {
+        // @ts-ignore
+        curr.el.firstElementChild.style.backgroundColor = "";
+        curr = curr.parent;
+      }
+      oldDirNode.el.style.color = "#cacdcc";
+      oldDirNode.el.style.fontWeight = "400";
+      oldDirNode.el.style.backgroundColor = "";
+    }
 
     this.cursors.delete(existingTab);
 
@@ -257,10 +269,10 @@ export class Enviornment {
       while (this.tabPrecedence.length) {
         const tabFallback = this.tabPrecedence[this.tabPrecedence.length - 1];
         if (this.cursors.has(tabFallback)) {
-          const newCursor = this.cursors.get(tabFallback);
+          const [newCursor, newDirNode] = this.cursors.get(tabFallback);
           newCursor.foreground();
 
-          this.updateForegroundedTab(tabFallback);
+          this.updateForegroundedTab(newDirNode, tabFallback);
           break;
         }
         this.tabPrecedence.pop();
@@ -268,7 +280,7 @@ export class Enviornment {
     }
   }
 
-  updateForegroundedTab(newForegroundedTab: HTMLElement) {
+  updateForegroundedTab(dirNode: DirNode | null, newForegroundedTab: HTMLElement) {
     if (this.foregroundedTab) {
       this.foregroundedTab.style.backgroundColor = "";
       // @ts-ignore
@@ -276,8 +288,32 @@ export class Enviornment {
       // @ts-ignore
       this.foregroundedTab.firstElementChild.style.fontWeight = "400";
 
-      const prevTabCursor = this.cursors.get(this.foregroundedTab);
+      const [prevTabCursor, oldDirNode] = this.cursors.get(this.foregroundedTab);
       prevTabCursor.background();
+
+      if (oldDirNode) {
+        let curr = oldDirNode.parent;
+        while (curr) {
+          // @ts-ignore
+          curr.el.firstElementChild.style.backgroundColor = "";
+          curr = curr.parent;
+        }
+        oldDirNode.el.style.color = "#cacdcc";
+        oldDirNode.el.style.fontWeight = "400";
+        oldDirNode.el.style.backgroundColor = "";
+      }
+    }
+
+    if (dirNode) {
+      let curr = dirNode.parent;
+      while (curr) {
+        // @ts-ignore
+        curr.el.firstElementChild.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
+        curr = curr.parent;
+      }
+      dirNode.el.style.color = "white";
+      dirNode.el.style.fontWeight = "bold";
+      dirNode.el.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
     }
 
     newForegroundedTab.style.backgroundColor = "#1b1c26";
