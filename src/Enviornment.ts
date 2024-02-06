@@ -1,7 +1,6 @@
 import { Cursor } from "./Cursor";
 
 // TODO: (PERFORMANCE) LAZY LOAD LINES
-// TODO: (PERFROAMNCE) LOAD ON REQUEST FILES UNDER DIRECTORY AFTER EXPAND
 
 interface FileOrFolder {
   path: string | null;
@@ -9,21 +8,8 @@ interface FileOrFolder {
   children: FileOrFolder[] | null;
 }
 
-interface ActiveFile {
-  parent: DirNode | null;
-  parentPath: string | null;
-  name: string;
-  sidebarEl: HTMLElement;
-}
-
 interface EnviornmentProps {
   openNewTab: (dirNode: DirNode, name: string, data: string) => void;
-  // updateActiveFile: (
-  //   parent: DirNode,
-  //   parentPath: string | null,
-  //   name: string,
-  //   sidebarEl: HTMLElement
-  // ) => void;
 }
 
 class DirNode {
@@ -80,7 +66,6 @@ class DirNode {
       this.el.addEventListener("click", async () => {
         // @ts-ignore
         const data = await window.electronAPI.openFileFromPath(fileOrFolder.path);
-        // props.updateActiveFile(this.parent, fileOrFolder.path, fileOrFolder.basename, this.el);
         props.openNewTab(this, fileOrFolder.basename, data);
       });
     }
@@ -160,42 +145,6 @@ export class Enviornment {
           // after this foregroundedTab will have the value of the HTMLElement of the newly opened tab
           this.openNewTab(dirNode, name, data);
         },
-
-        // updateActiveFile: (
-        //   parent: DirNode,
-        //   parentPath: string | null,
-        //   name: string,
-        //   sidebarEl: HTMLElement
-        // ) => {
-        // if (this.activeFile) {
-        //   let curr = this.activeFile.parent;
-        //   while (curr) {
-        //     // @ts-ignore
-        //     curr.el.firstElementChild.style.backgroundColor = "";
-        //     curr = curr.parent;
-        //   }
-        //   this.activeFile.sidebarEl.style.color = "#cacdcc";
-        //   this.activeFile.sidebarEl.style.fontWeight = "400";
-        //   this.activeFile.sidebarEl.style.backgroundColor = "";
-        // }
-
-        // let curr = parent;
-        // while (curr) {
-        //   // @ts-ignore
-        //   curr.el.firstElementChild.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
-        //   curr = curr.parent;
-        // }
-        // sidebarEl.style.color = "white";
-        // sidebarEl.style.fontWeight = "bold";
-        // sidebarEl.style.backgroundColor = "rgba(219, 221, 223, 0.1)";
-
-        //   this.activeFile = {
-        //     parent,
-        //     parentPath,
-        //     name,
-        //     sidebarEl,
-        //   };
-        // },
       });
 
       document.getElementById("sidebar").appendChild(this.directory.el);
