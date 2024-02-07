@@ -50,11 +50,13 @@ export class Cursor {
   private navigateLeft() {
     this.anchor = null;
     this.col--;
+    this.forceScrollToViewCursor();
   }
 
   private navigateRight() {
     this.anchor = null;
     this.col++;
+    this.forceScrollToViewCursor();
   }
 
   private navigateUp() {
@@ -69,6 +71,7 @@ export class Cursor {
       }
       this.updateCurrentLine(this.lineRef.prev);
     }
+    this.forceScrollToViewCursor();
   }
 
   private navigateDown() {
@@ -82,6 +85,20 @@ export class Cursor {
         this.col = this.anchor;
       }
       this.updateCurrentLine(this.lineRef.next);
+    }
+    this.forceScrollToViewCursor();
+  }
+
+  private forceScrollToViewCursor() {
+    const lineCoords = this.lineRef.el.getBoundingClientRect();
+
+    const hiddenBelow = lineCoords.top - lineCoords.height < lineCoords.height;
+    const hiddenAbove = this.editorEl.clientHeight < lineCoords.top - lineCoords.height;
+    if (hiddenAbove || hiddenBelow) {
+      this.editorEl.scrollTo({
+        top: lineCoords.top + this.editorEl.scrollTop - 33.5,
+        behavior: "instant",
+      });
     }
   }
 
@@ -210,7 +227,7 @@ export class Cursor {
     };
 
     this.editorEl.addEventListener("scroll", (e: Event) => {
-      // TODO: Will be used to lazy load lines.
+      console.log("scrolling");
     });
 
     document.addEventListener("keydown", this.keydownEventListener);
