@@ -16,7 +16,9 @@ interface CursorPos {
 export class Cursor {
   private editorEl: HTMLElement;
 
-  private lineRef: Line;
+  private currentLine: Line;
+  private lineCache: Map<number, Line>;
+
   private row: number;
   private col: number;
   private colAnchor: number | null;
@@ -28,6 +30,7 @@ export class Cursor {
     this.row = row;
     this.col = col;
     this.colAnchor = null;
+    this.lineCache = new Map();
 
     this.file = new FileMutationHandler(fileText, {
       attatchListenerToNewLine: (lineEl: HTMLElement) => {
@@ -55,28 +58,28 @@ export class Cursor {
   private navigateLeft() {
     this.colAnchor = null;
     this.col--;
-    this.updateCurrentLine(this.lineRef);
+    this.updateCurrentLine(this.currentLine);
     this.forceScrollToViewCursor();
   }
 
   private navigateRight() {
     this.colAnchor = null;
     this.col++;
-    this.updateCurrentLine(this.lineRef);
+    this.updateCurrentLine(this.currentLine);
     this.forceScrollToViewCursor();
   }
 
   private navigateUp() {
     this.row--;
     if (!this.colAnchor) this.colAnchor = this.col;
-    if (this.lineRef.prev) {
-      const textLength = this.lineRef.prev.el.firstElementChild.textContent.length;
+    if (this.currentLine.prev) {
+      const textLength = this.currentLine.prev.el.firstElementChild.textContent.length;
       if (this.colAnchor > textLength) {
         this.col = textLength;
       } else {
         this.col = this.colAnchor;
       }
-      this.updateCurrentLine(this.lineRef.prev);
+      this.updateCurrentLine(this.currentLine.prev);
     }
     this.forceScrollToViewCursor();
   }
@@ -84,22 +87,22 @@ export class Cursor {
   private navigateDown() {
     this.row++;
     if (!this.colAnchor) this.colAnchor = this.col;
-    if (this.lineRef.next) {
-      const textLength = this.lineRef.next.el.firstElementChild.textContent.length;
+    if (this.currentLine.next) {
+      const textLength = this.currentLine.next.el.firstElementChild.textContent.length;
       if (this.colAnchor > textLength) {
         this.col = textLength;
       } else {
         this.col = this.colAnchor;
       }
-      this.updateCurrentLine(this.lineRef.next);
+      this.updateCurrentLine(this.currentLine.next);
     }
     this.forceScrollToViewCursor();
   }
 
   private forceScrollToViewCursor() {
-    if (!this.lineRef.el.isConnected) {
+    if (!this.currentLine.el.isConnected) {
       let offsetFromTop = 0;
-      let curr = this.lineRef;
+      let curr = this.currentLine;
       while (curr) {
         offsetFromTop++;
         curr = curr.prev;
@@ -112,9 +115,9 @@ export class Cursor {
   }
 
   private updateCurrentLine(currLine: Line) {
-    if (this.lineRef) {
-      this.lineRef.el.removeChild(this.lineRef.el.lastElementChild);
-      this.lineRef.el.style.backgroundColor = "";
+    if (this.currentLine) {
+      this.currentLine.el.removeChild(this.currentLine.el.lastElementChild);
+      this.currentLine.el.style.backgroundColor = "";
     }
 
     const cursor = document.createElement("div");
@@ -123,20 +126,47 @@ export class Cursor {
     currLine.el.appendChild(cursor);
     currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
 
-    this.lineRef = currLine;
+    this.currentLine = currLine;
+  }
+
+  private rerenderLines() {
+    const lineGroup = document.getElementById("line-group");
+    while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
+
+    const scopedRegion = document.createDocumentFragment();
+    const startingRow = Math.floor(this.editorEl.scrollTop / 16);
+
+    let currLine = this.lineCache.get(startingRow);
+    if (!currLine) {
+      currLine = this.file.head;
+      for (let row = 0; row < startingRow; row++) {
+        if (!currLine) break;
+        if (currLine.next) currLine = currLine.next;
+      }
+    }
+
+    let offset = 0;
+    do {
+      if (!currLine) break;
+
+      if (!this.lineCache.has(startingRow + offset))
+        this.lineCache.set(startingRow + offset, currLine);
+
+      currLine.el.style.top = `${startingRow + offset}em`;
+      scopedRegion.appendChild(currLine.el);
+      currLine = currLine.next;
+      offset++;
+    } while (offset * 16 <= window.innerHeight);
+
+    lineGroup.appendChild(scopedRegion);
   }
 
   foreground() {
     document.getElementById("workspace-group").appendChild(this.editorEl);
     const lineGroup = document.getElementById("line-group");
 
-    let currLine = this.file.head;
-    for (let offset = 0; offset < 80; offset++) {
-      currLine.el.style.top = `${offset}em`;
-      lineGroup.appendChild(currLine.el);
-      currLine = currLine.next;
-    }
     lineGroup.style.height = `${this.file.size}em`;
+    this.rerenderLines();
 
     this.keydownEventListener = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -155,7 +185,7 @@ export class Cursor {
 
         case "ArrowRight":
           {
-            const text = this.lineRef.el.firstElementChild.textContent;
+            const text = this.currentLine.el.firstElementChild.textContent;
             if (this.col < text.length) this.navigateRight();
           }
           break;
@@ -163,7 +193,7 @@ export class Cursor {
         case "Tab":
           {
             for (let i = 0; i < 4; i++) {
-              this.file.insertCharacter(this.lineRef, this.col, "\xa0");
+              this.file.insertCharacter(this.currentLine, this.col, "\xa0");
               this.navigateRight();
             }
           }
@@ -172,21 +202,25 @@ export class Cursor {
         case "Backspace":
           {
             if (this.col != 0) {
-              const text = this.lineRef.el.firstElementChild.textContent;
+              const text = this.currentLine.el.firstElementChild.textContent;
               const tab = "\xa0\xa0\xa0\xa0";
               if (this.col > 3 && text.slice(this.col - 4, this.col) === tab) {
                 for (let i = 0; i < 4; i++) {
-                  this.file.deleteCharacter(this.lineRef, this.col);
+                  this.file.deleteCharacter(this.currentLine, this.col);
                   this.navigateLeft();
                 }
               } else {
-                this.file.deleteCharacter(this.lineRef, this.col);
+                this.file.deleteCharacter(this.currentLine, this.col);
                 this.navigateLeft();
               }
             } else if (this.row > 0) {
-              const textOverflow = this.lineRef.el.firstElementChild.textContent.slice(this.col);
-              const newCol = this.file.removeCurrentLine(this.lineRef, textOverflow);
+              const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
+                this.col
+              );
+              const newCol = this.file.removeCurrentLine(this.currentLine, textOverflow);
               this.navigateUp();
+              this.rerenderLines();
+              this.lineCache = new Map();
               this.col = newCol;
             }
           }
@@ -200,10 +234,12 @@ export class Cursor {
 
         case "Enter":
           {
-            const textContent = this.lineRef.el.firstElementChild.textContent;
-            this.lineRef.el.firstElementChild.textContent = textContent.slice(0, this.col);
-            this.file.createNewLine(this.lineRef, textContent.slice(this.col));
+            const textContent = this.currentLine.el.firstElementChild.textContent;
+            this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
+            this.file.createNewLine(this.currentLine, textContent.slice(this.col));
             this.navigateDown();
+            this.rerenderLines();
+            this.lineCache = new Map();
             this.col = 0;
             this.colAnchor = null;
           }
@@ -211,36 +247,14 @@ export class Cursor {
 
         default: {
           const ch = e.key === " " ? "\xa0" : e.key;
-          this.file.insertCharacter(this.lineRef, this.col, ch);
+          this.file.insertCharacter(this.currentLine, this.col, ch);
           this.navigateRight();
         }
       }
     };
 
     this.editorEl.addEventListener("scroll", (e: Event) => {
-      const lineGroup = document.getElementById("line-group");
-      while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
-
-      const scopedRegion = document.createDocumentFragment();
-      const startingRow = Math.floor(this.editorEl.scrollTop / 16);
-
-      let currLine = this.file.head;
-      for (let i = 0; i < startingRow; i++) {
-        if (!currLine) break;
-        if (currLine.next) currLine = currLine.next;
-      }
-
-      let offset = 0;
-      do {
-        if (!currLine) break;
-
-        currLine.el.style.top = `${startingRow + offset}em`;
-        scopedRegion.appendChild(currLine.el);
-        currLine = currLine.next;
-        offset++;
-      } while (offset * 16 <= window.innerHeight);
-
-      lineGroup.appendChild(scopedRegion);
+      this.rerenderLines();
     });
 
     document.addEventListener("keydown", this.keydownEventListener);
@@ -248,6 +262,8 @@ export class Cursor {
 
   // cursor is "backgrounded" by default
   background() {
+    const lineGroup = document.getElementById("line-group");
+    while (lineGroup?.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
     this.editorEl.remove();
     document.removeEventListener("keydown", this.keydownEventListener);
   }
