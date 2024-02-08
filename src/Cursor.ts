@@ -180,13 +180,25 @@ export class Cursor {
           break;
 
         case "ArrowLeft":
-          if (this.col > 0) this.navigateLeft();
+          if (this.col > 0) {
+            this.navigateLeft();
+          } else if (this.row > 0) {
+            this.col = this.currentLine.prev.el.textContent.length;
+            this.navigateUp();
+          }
           break;
 
         case "ArrowRight":
           {
+            const linesGroupEl = document.getElementById("line-group");
+
             const text = this.currentLine.el.firstElementChild.textContent;
-            if (this.col < text.length) this.navigateRight();
+            if (this.col < text.length) {
+              this.navigateRight();
+            } else if (linesGroupEl.children.length > this.row + 1) {
+              this.col = 0;
+              this.navigateDown();
+            }
           }
           break;
 
@@ -218,10 +230,12 @@ export class Cursor {
                 this.col
               );
               const newCol = this.file.removeCurrentLine(this.currentLine, textOverflow);
-              this.navigateUp();
               this.rerenderLines();
               this.lineCache = new Map();
+
+              // invoke navigateUp() AFTER setting col since it will determine the next location of the cursor
               this.col = newCol;
+              this.navigateUp();
             }
           }
           break;
@@ -237,11 +251,13 @@ export class Cursor {
             const textContent = this.currentLine.el.firstElementChild.textContent;
             this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
             this.file.createNewLine(this.currentLine, textContent.slice(this.col));
-            this.navigateDown();
             this.rerenderLines();
             this.lineCache = new Map();
-            this.col = 0;
             this.colAnchor = null;
+
+            // invoke invoke navigateDown() AFTER setting col since it will determine the next location of the cursor
+            this.col = 0;
+            this.navigateDown();
           }
           break;
 
