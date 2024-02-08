@@ -9,11 +9,15 @@ interface Line {
 }
 
 export class Editor {
-  private head: Line;
+  head: Line;
+
+  size: number;
+
   private cursorProps: CursorProps;
 
   constructor(fileText: string, cursorProps: CursorProps) {
     this.cursorProps = cursorProps;
+    this.size = 0;
 
     this.head = null;
     if (!fileText.length) {
@@ -22,6 +26,7 @@ export class Editor {
         prev: null,
         el: this.createLineEl(),
       };
+      this.size++;
     }
 
     let curr = this.head;
@@ -46,6 +51,8 @@ export class Editor {
           curr = this.head;
         }
         buff = "";
+
+        this.size++;
       } else {
         buff += ch === " " ? "\xa0" : ch;
       }
@@ -66,6 +73,7 @@ export class Editor {
         this.head = newLine;
         curr = this.head;
       }
+      this.size++;
     }
   }
 
@@ -80,10 +88,6 @@ export class Editor {
       curr = curr.next;
     }
     return null;
-  }
-
-  getHead() {
-    return this.head;
   }
 
   insertCharacter(line: Line, col: number, ch: string) {
@@ -112,6 +116,9 @@ export class Editor {
 
     // directly append new element after node on the DOM
     prevLine.el.after(newLine.el);
+
+    this.size++;
+    this.updateSize(this.size);
   }
 
   removeCurrentLine(currLine: Line, textOverflow: string): number {
@@ -127,6 +134,9 @@ export class Editor {
 
     // directly remove the current line from the DOM
     currLine.el.remove();
+
+    this.size--;
+    this.updateSize(this.size);
 
     // if the line above was empty, new cursor column should just be set to 0
     if (currLine.prev.el.textContent.length === textOverflow.length) {
@@ -145,6 +155,13 @@ export class Editor {
     this.cursorProps.attatchListenerToNewLine(lineContainer);
 
     return lineContainer;
+  }
+
+  updateSize(newSize: number) {
+    this.size = newSize;
+
+    const lineGroup = document.getElementById("line-group");
+    lineGroup.style.height = `${this.size}em`;
   }
 
   // chain nodes together by \n and return the entire content of the new modified file

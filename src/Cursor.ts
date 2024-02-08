@@ -43,7 +43,7 @@ export class Cursor {
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
 
-    this.updateCurrentLine(this.file.getHead());
+    this.updateCurrentLine(this.file.head);
     this.renderCursor(null, this.lineRef);
   }
 
@@ -120,7 +120,8 @@ export class Cursor {
     document.getElementById("workspace-group").appendChild(this.editorEl);
     const lineGroup = document.getElementById("line-group");
 
-    let curr = this.file.getHead();
+    let offset = 0;
+    let curr = this.file.head;
     while (curr) {
       const lineEl = curr.el;
 
@@ -139,9 +140,13 @@ export class Cursor {
         this.updateCurrentLine(newLine);
       });
 
+      lineEl.style.top = `${offset}em`;
       lineGroup.appendChild(lineEl);
+
       curr = curr.next;
+      offset++;
     }
+    this.file.updateSize(this.file.size);
 
     this.keydownEventListener = (e: KeyboardEvent) => {
       const prevLine = this.lineRef;

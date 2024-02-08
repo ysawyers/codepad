@@ -120,27 +120,23 @@ body {
   color: white;
 }
 
-/* .tab-close-button:hover {
-  background-color: rgba(219, 221, 223, 0.1);
-} */
-
 .editor-container {
-  background-color: #1b1c26;
   flex: 1;
+  background-color: #1b1c26;
   overflow: auto;
 }
 
 .line-container {
-  flex: 1;
+  position: relative;
   background-color: #1b1c26;
   cursor: text;
   overflow: auto;
-  padding-bottom: 96vh;
 }
 
 .line {
-  position: relative;
+  position: absolute;
   height: 1em;
+  width: 100%;
 }
 
 .default-line-text {
