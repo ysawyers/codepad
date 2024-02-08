@@ -1,6 +1,4 @@
-interface CursorProps {
-  attatchListenerToNewLine: (newLineEl: HTMLElement) => void;
-}
+// TODO: Think about how to make opening extremely large files fast.
 
 interface Line {
   el: HTMLElement;
@@ -12,10 +10,7 @@ export class FileMutationHandler {
   head: Line;
   size: number;
 
-  private cursorProps: CursorProps;
-
-  constructor(fileText: string, cursorProps: CursorProps) {
-    this.cursorProps = cursorProps;
+  constructor(fileText: string) {
     this.size = 1;
 
     this.head = {
@@ -124,6 +119,9 @@ export class FileMutationHandler {
       currLine.prev.next = null;
     }
 
+    // where the cursor will jump to on the previous line
+    const oldLength = currLine.prev.el.firstElementChild.textContent.length;
+
     // append the contents of the line past the cursor to the previous line
     currLine.prev.el.firstElementChild.textContent += textOverflow;
 
@@ -132,29 +130,14 @@ export class FileMutationHandler {
 
     this.size--;
 
-    // if the line above was empty, new cursor column should just be set to 0
-    if (currLine.prev.el.textContent.length === textOverflow.length) {
-      return 0;
-    }
-    return currLine.prev.el.textContent.length - textOverflow.length;
+    return oldLength;
   }
 
   createLineEl(): HTMLElement {
-    const lineContainer = document.createElement("div");
-    lineContainer.className = "line";
-    const lineSpan = document.createElement("span");
-    lineSpan.className = "default-line-text";
-    lineContainer.appendChild(lineSpan);
-
-    this.cursorProps.attatchListenerToNewLine(lineContainer);
+    const lineContainer = (
+      document.getElementById("line") as HTMLTemplateElement
+    ).content.firstElementChild.cloneNode(true) as HTMLElement;
 
     return lineContainer;
   }
 }
-
-// updateSize(newSize: number) {
-//   this.size = newSize;
-
-//   const lineGroup = document.getElementById("line-group");
-//   lineGroup.style.height = `${this.size}em`;
-// }

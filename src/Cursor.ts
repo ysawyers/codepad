@@ -8,17 +8,13 @@ interface Line {
   next: Line | null;
 }
 
-interface CursorPos {
-  row: number;
-  col: number;
-}
-
 export class Cursor {
   private editorEl: HTMLElement;
 
   private currentLine: Line;
   private lineCache: Map<number, Line>;
 
+  // TODO: eventually turn this into a proxy
   private row: number;
   private col: number;
   private colAnchor: number | null;
@@ -32,23 +28,7 @@ export class Cursor {
     this.colAnchor = null;
     this.lineCache = new Map();
 
-    this.file = new FileMutationHandler(fileText, {
-      attatchListenerToNewLine: (lineEl: HTMLElement) => {
-        lineEl.addEventListener("mousedown", (e) => {
-          let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
-
-          let col = Math.round(distanceFromLeft / 7.8);
-          if (col > lineEl.firstElementChild.textContent.length) {
-            col = lineEl.firstElementChild.textContent.length;
-          }
-
-          const [newLine, newRow] = this.file.getLineFromNode(lineEl);
-          this.col = col;
-          this.row = newRow;
-          this.updateCurrentLine(newLine);
-        });
-      },
-    });
+    this.file = new FileMutationHandler(fileText);
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
@@ -152,8 +132,24 @@ export class Cursor {
       if (!this.lineCache.has(startingRow + offset))
         this.lineCache.set(startingRow + offset, currLine);
 
+      let lineEl = currLine.el;
+      currLine.el.addEventListener("click", (e: MouseEvent) => {
+        let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
+
+        let col = Math.round(distanceFromLeft / 7.8);
+        if (col > lineEl.firstElementChild.textContent.length) {
+          col = lineEl.firstElementChild.textContent.length;
+        }
+
+        const [newLine, newRow] = this.file.getLineFromNode(lineEl);
+        this.col = col;
+        this.row = newRow;
+        this.updateCurrentLine(newLine);
+      });
+
       currLine.el.style.top = `${startingRow + offset}em`;
       scopedRegion.appendChild(currLine.el);
+
       currLine = currLine.next;
       offset++;
     } while (offset * 16 <= window.innerHeight);
@@ -229,12 +225,14 @@ export class Cursor {
               const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
                 this.col
               );
-              const newCol = this.file.removeCurrentLine(this.currentLine, textOverflow);
-              this.rerenderLines();
-              this.lineCache = new Map();
 
-              // invoke navigateUp() AFTER setting col since it will determine the next location of the cursor
-              this.col = newCol;
+              this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
+
+              // clear cache before rerendering lines since lines are now reordered
+              this.lineCache = new Map();
+              this.rerenderLines();
+
+              this.colAnchor = null;
               this.navigateUp();
             }
           }
@@ -251,12 +249,14 @@ export class Cursor {
             const textContent = this.currentLine.el.firstElementChild.textContent;
             this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
             this.file.createNewLine(this.currentLine, textContent.slice(this.col));
-            this.rerenderLines();
-            this.lineCache = new Map();
-            this.colAnchor = null;
 
-            // invoke invoke navigateDown() AFTER setting col since it will determine the next location of the cursor
             this.col = 0;
+
+            // clear cache before rerendering lines since lines are now reordered
+            this.lineCache = new Map();
+            this.rerenderLines();
+
+            this.colAnchor = null;
             this.navigateDown();
           }
           break;

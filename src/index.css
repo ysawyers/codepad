@@ -164,3 +164,9 @@ body {
   background-color: rgba(219, 221, 223, 0.1);
   cursor: pointer;
 }
+
+.line-number-container {
+  /* width: 2em;
+  height: 20em;
+  background-color: white; */
+}
