@@ -1,9 +1,16 @@
-import { Editor } from "./Editor";
+import { FileMutationHandler } from "./FileMutationHandler";
+
+// IMPORTANT NOTE: EVERYTHING IS WRITTEN WITH THE NOTION OF A CONSTANT LINE HEIGHT OF 1EM = 16 PX
 
 interface Line {
   el: HTMLElement;
   prev: Line | null;
   next: Line | null;
+}
+
+interface CursorPos {
+  row: number;
+  col: number;
 }
 
 export class Cursor {
@@ -12,29 +19,29 @@ export class Cursor {
   private lineRef: Line;
   private row: number;
   private col: number;
-  private anchor: number | null;
+  private colAnchor: number | null;
 
-  private file: Editor;
-  private keydownEventListener: any;
+  private file: FileMutationHandler;
+  private keydownEventListener: (e: KeyboardEvent) => void;
 
   constructor(row: number, col: number, fileText: string) {
     this.row = row;
     this.col = col;
-    this.anchor = null;
-    this.file = new Editor(fileText, {
-      attatchListenerToNewLine: (newLineEl: HTMLElement) => {
-        newLineEl.addEventListener("mousedown", (e) => {
-          let distanceFromLeft = e.clientX - newLineEl.parentElement.getBoundingClientRect().left;
+    this.colAnchor = null;
+
+    this.file = new FileMutationHandler(fileText, {
+      attatchListenerToNewLine: (lineEl: HTMLElement) => {
+        lineEl.addEventListener("mousedown", (e) => {
+          let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
 
           let col = Math.round(distanceFromLeft / 7.8);
-          if (col > newLineEl.firstElementChild.textContent.length) {
-            col = newLineEl.firstElementChild.textContent.length;
+          if (col > lineEl.firstElementChild.textContent.length) {
+            col = lineEl.firstElementChild.textContent.length;
           }
-          this.col = col;
 
-          const [newLine, newRow] = this.file.getLineFromNode(newLineEl);
+          const [newLine, newRow] = this.file.getLineFromNode(lineEl);
+          this.col = col;
           this.row = newRow;
-          this.renderCursor(this.lineRef, newLine);
           this.updateCurrentLine(newLine);
         });
       },
@@ -42,32 +49,32 @@ export class Cursor {
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
-
     this.updateCurrentLine(this.file.head);
-    this.renderCursor(null, this.lineRef);
   }
 
   private navigateLeft() {
-    this.anchor = null;
+    this.colAnchor = null;
     this.col--;
+    this.updateCurrentLine(this.lineRef);
     this.forceScrollToViewCursor();
   }
 
   private navigateRight() {
-    this.anchor = null;
+    this.colAnchor = null;
     this.col++;
+    this.updateCurrentLine(this.lineRef);
     this.forceScrollToViewCursor();
   }
 
   private navigateUp() {
     this.row--;
-    if (!this.anchor) this.anchor = this.col;
+    if (!this.colAnchor) this.colAnchor = this.col;
     if (this.lineRef.prev) {
       const textLength = this.lineRef.prev.el.firstElementChild.textContent.length;
-      if (this.anchor > textLength) {
+      if (this.colAnchor > textLength) {
         this.col = textLength;
       } else {
-        this.col = this.anchor;
+        this.col = this.colAnchor;
       }
       this.updateCurrentLine(this.lineRef.prev);
     }
@@ -76,13 +83,13 @@ export class Cursor {
 
   private navigateDown() {
     this.row++;
-    if (!this.anchor) this.anchor = this.col;
+    if (!this.colAnchor) this.colAnchor = this.col;
     if (this.lineRef.next) {
       const textLength = this.lineRef.next.el.firstElementChild.textContent.length;
-      if (this.anchor > textLength) {
+      if (this.colAnchor > textLength) {
         this.col = textLength;
       } else {
-        this.col = this.anchor;
+        this.col = this.colAnchor;
       }
       this.updateCurrentLine(this.lineRef.next);
     }
@@ -90,29 +97,32 @@ export class Cursor {
   }
 
   private forceScrollToViewCursor() {
-    const lineCoords = this.lineRef.el.getBoundingClientRect();
-
-    const hiddenBelow = lineCoords.top - lineCoords.height < lineCoords.height;
-    const hiddenAbove = this.editorEl.clientHeight < lineCoords.top - lineCoords.height;
-    if (hiddenAbove || hiddenBelow) {
+    if (!this.lineRef.el.isConnected) {
+      let offsetFromTop = 0;
+      let curr = this.lineRef;
+      while (curr) {
+        offsetFromTop++;
+        curr = curr.prev;
+      }
       this.editorEl.scrollTo({
-        top: lineCoords.top + this.editorEl.scrollTop - 33.5,
+        top: offsetFromTop * 16 - 16,
         behavior: "instant",
       });
     }
   }
 
-  private renderCursor(prevLine: Line | null, line: Line) {
-    if (prevLine) prevLine.el.removeChild(prevLine.el.lastElementChild);
+  private updateCurrentLine(currLine: Line) {
+    if (this.lineRef) {
+      this.lineRef.el.removeChild(this.lineRef.el.lastElementChild);
+      this.lineRef.el.style.backgroundColor = "";
+    }
+
     const cursor = document.createElement("div");
     cursor.className = "cursor";
     cursor.style.marginLeft = `${this.col * 7.8}px`;
-    line.el.appendChild(cursor);
-  }
-
-  private updateCurrentLine(currLine: Line) {
-    if (this.lineRef) this.lineRef.el.style.backgroundColor = "";
+    currLine.el.appendChild(cursor);
     currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
+
     this.lineRef = currLine;
   }
 
@@ -120,37 +130,15 @@ export class Cursor {
     document.getElementById("workspace-group").appendChild(this.editorEl);
     const lineGroup = document.getElementById("line-group");
 
-    let offset = 0;
-    let curr = this.file.head;
-    while (curr) {
-      const lineEl = curr.el;
-
-      curr.el.addEventListener("mousedown", (e) => {
-        let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
-
-        let col = Math.round(distanceFromLeft / 7.8);
-        if (col > lineEl.firstElementChild.textContent.length) {
-          col = lineEl.firstElementChild.textContent.length;
-        }
-        this.col = col;
-
-        const [newLine, newRow] = this.file.getLineFromNode(lineEl);
-        this.row = newRow;
-        this.renderCursor(this.lineRef, newLine);
-        this.updateCurrentLine(newLine);
-      });
-
-      lineEl.style.top = `${offset}em`;
-      lineGroup.appendChild(lineEl);
-
-      curr = curr.next;
-      offset++;
+    let currLine = this.file.head;
+    for (let offset = 0; offset < 80; offset++) {
+      currLine.el.style.top = `${offset}em`;
+      lineGroup.appendChild(currLine.el);
+      currLine = currLine.next;
     }
-    this.file.updateSize(this.file.size);
+    lineGroup.style.height = `${this.file.size}em`;
 
     this.keydownEventListener = (e: KeyboardEvent) => {
-      const prevLine = this.lineRef;
-
       switch (e.key) {
         case "ArrowUp":
           if (this.row > 0) this.navigateUp();
@@ -217,7 +205,7 @@ export class Cursor {
             this.file.createNewLine(this.lineRef, textContent.slice(this.col));
             this.navigateDown();
             this.col = 0;
-            this.anchor = null;
+            this.colAnchor = null;
           }
           break;
 
@@ -227,12 +215,32 @@ export class Cursor {
           this.navigateRight();
         }
       }
-
-      this.renderCursor(prevLine, this.lineRef);
     };
 
     this.editorEl.addEventListener("scroll", (e: Event) => {
-      console.log("scrolling");
+      const lineGroup = document.getElementById("line-group");
+      while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
+
+      const scopedRegion = document.createDocumentFragment();
+      const startingRow = Math.floor(this.editorEl.scrollTop / 16);
+
+      let currLine = this.file.head;
+      for (let i = 0; i < startingRow; i++) {
+        if (!currLine) break;
+        if (currLine.next) currLine = currLine.next;
+      }
+
+      let offset = 0;
+      do {
+        if (!currLine) break;
+
+        currLine.el.style.top = `${startingRow + offset}em`;
+        scopedRegion.appendChild(currLine.el);
+        currLine = currLine.next;
+        offset++;
+      } while (offset * 16 <= window.innerHeight);
+
+      lineGroup.appendChild(scopedRegion);
     });
 
     document.addEventListener("keydown", this.keydownEventListener);

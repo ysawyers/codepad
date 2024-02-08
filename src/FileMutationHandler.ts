@@ -8,26 +8,22 @@ interface Line {
   next: Line | null;
 }
 
-export class Editor {
+export class FileMutationHandler {
   head: Line;
-
   size: number;
 
   private cursorProps: CursorProps;
 
   constructor(fileText: string, cursorProps: CursorProps) {
     this.cursorProps = cursorProps;
-    this.size = 0;
+    this.size = 1;
 
-    this.head = null;
-    if (!fileText.length) {
-      this.head = {
-        next: null,
-        prev: null,
-        el: this.createLineEl(),
-      };
-      this.size++;
-    }
+    this.head = {
+      next: null,
+      prev: null,
+      el: this.createLineEl(),
+    };
+    if (fileText.length) this.head = null;
 
     let curr = this.head;
     let buff = "";
@@ -118,7 +114,6 @@ export class Editor {
     prevLine.el.after(newLine.el);
 
     this.size++;
-    this.updateSize(this.size);
   }
 
   removeCurrentLine(currLine: Line, textOverflow: string): number {
@@ -136,7 +131,6 @@ export class Editor {
     currLine.el.remove();
 
     this.size--;
-    this.updateSize(this.size);
 
     // if the line above was empty, new cursor column should just be set to 0
     if (currLine.prev.el.textContent.length === textOverflow.length) {
@@ -156,25 +150,11 @@ export class Editor {
 
     return lineContainer;
   }
-
-  updateSize(newSize: number) {
-    this.size = newSize;
-
-    const lineGroup = document.getElementById("line-group");
-    lineGroup.style.height = `${this.size}em`;
-  }
-
-  // chain nodes together by \n and return the entire content of the new modified file
-  //   readFileState(): string {
-  //     let file = "";
-
-  //     let curr = this.head;
-  //     while (curr) {
-  //       file += curr.text;
-  //       file += "\n";
-  //       curr = curr.next;
-  //     }
-
-  //     return file;
-  //   }
 }
+
+// updateSize(newSize: number) {
+//   this.size = newSize;
+
+//   const lineGroup = document.getElementById("line-group");
+//   lineGroup.style.height = `${this.size}em`;
+// }
