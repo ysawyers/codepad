@@ -8,6 +8,11 @@ interface Line {
   next: Line | null;
 }
 
+interface Hover {
+  startingLine: Line;
+  startingCol: number;
+}
+
 export class Cursor {
   private editorEl: HTMLElement;
 
@@ -25,12 +30,16 @@ export class Cursor {
   private file: FileMutationHandler;
   private keydownEventListener: (e: KeyboardEvent) => void;
 
+  private hovering: Hover | null;
+
   constructor(row: number, col: number, fileText: string) {
     this.offsetFromTop = 0;
     this.row = row;
     this.col = col;
     this.colAnchor = null;
     this.lineCache = new Map();
+
+    this.hovering = null;
 
     this.file = new FileMutationHandler(fileText);
 
@@ -129,7 +138,6 @@ export class Cursor {
     }
 
     const lineGroup = document.getElementById("line-group");
-    while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
 
     let offset = 0;
     do {
@@ -158,11 +166,15 @@ export class Cursor {
         }
 
         const computedRow = Math.floor(this.offsetFromTop) + regionRow;
-
+        const newLine = this.lineCache.get(computedRow);
         this.col = col;
         this.row = computedRow;
+        this.updateCurrentLine(newLine);
 
-        this.updateCurrentLine(this.lineCache.get(computedRow));
+        this.hovering = {
+          startingLine: newLine,
+          startingCol: col,
+        };
       });
 
       currLine.el.style.top = `${startingRow + offset}em`;
@@ -172,6 +184,7 @@ export class Cursor {
       offset++;
     } while (offset * 16 <= window.innerHeight);
 
+    while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
     lineGroup.appendChild(scopedRegion);
   }
 
@@ -195,7 +208,7 @@ export class Cursor {
 
         case "ArrowDown":
           const linesGroupEl = document.getElementById("line-group");
-          if (linesGroupEl.children.length > this.row + 1) this.navigateDown();
+          if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) this.navigateDown();
           break;
 
         case "ArrowLeft":
@@ -214,7 +227,7 @@ export class Cursor {
             const text = this.currentLine.el.firstElementChild.textContent;
             if (this.col < text.length) {
               this.navigateRight();
-            } else if (linesGroupEl.children.length > this.row + 1) {
+            } else if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) {
               this.col = 0;
               this.navigateDown();
             }
@@ -294,6 +307,24 @@ export class Cursor {
 
     this.editorEl.addEventListener("scroll", (e: Event) => {
       this.rerenderLines();
+    });
+
+    this.editorEl.lastElementChild.addEventListener("mousemove", (e: MouseEvent) => {
+      if (this.hovering) {
+        const absoluteTopRow = Math.floor(this.offsetFromTop);
+        const scopeRow = Math.floor((e.y - 33) / 16);
+        const computedRow = absoluteTopRow + scopeRow;
+
+        const currentLineHovering = this.lineCache.get(computedRow);
+
+        const col = Math.round(e.offsetX / 7.8);
+
+        this.updateCurrentLine(currentLineHovering);
+      }
+    });
+
+    window.addEventListener("mouseup", (e: MouseEvent) => {
+      this.hovering = null;
     });
 
     document.addEventListener("keydown", this.keydownEventListener);

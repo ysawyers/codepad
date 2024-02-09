@@ -1,11 +1,6 @@
 import "./index.css";
 import { Enviornment } from "./Enviornment";
 
-// create tree of linkedlist partialHeads for easy grouping! (use cases tho?)
-// create type interface for window (contextBridge API)
-
-// when logging document fragment it will see things from future mutations ?????
-
 // prevents default behavior of keys
 window.addEventListener(
   "keydown",
@@ -16,5 +11,15 @@ window.addEventListener(
   },
   false
 );
+
+// prevent default text highlighting
+window.addEventListener("mousemove", (e) => {
+  e.preventDefault();
+});
+
+// prevent double click text highlighting (NOTE: MAY BREAK SOME THINGS SO REMEMBER THIS!)
+window.addEventListener("mousedown", (e) => {
+  if (e.detail >= 2) e.preventDefault();
+});
 
 const env = new Enviornment();

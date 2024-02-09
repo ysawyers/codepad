@@ -127,4 +127,10 @@ export class FileMutationHandler {
 
     return oldLength;
   }
+
+  // TODO
+  batchInsert() {}
+
+  // TODO
+  batchRemove() {}
 }
