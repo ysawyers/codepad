@@ -121,6 +121,7 @@ body {
 }
 
 .editor-container {
+  display: flex;
   flex: 1;
   background-color: #1b1c26;
   overflow: auto;
@@ -132,10 +133,12 @@ body {
   cursor: text;
   overflow: auto;
   padding-bottom: 30em;
+  flex-grow: 1;
 }
 
 .line {
   position: absolute;
+  display: flex;
   height: 1em;
   width: 100%;
 }
@@ -166,7 +169,7 @@ body {
 }
 
 .line-number-container {
-  /* width: 2em;
-  height: 20em;
-  background-color: white; */
+  width: 3em;
+  height: 100%;
+  background-color: #1b1c26;
 }

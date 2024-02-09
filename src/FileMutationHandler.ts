@@ -6,6 +6,14 @@ interface Line {
   next: Line | null;
 }
 
+function createLineEl(): HTMLElement {
+  const lineContainer = (
+    document.getElementById("line") as HTMLTemplateElement
+  ).content.firstElementChild.cloneNode(true) as HTMLElement;
+
+  return lineContainer;
+}
+
 export class FileMutationHandler {
   head: Line;
   size: number;
@@ -16,7 +24,7 @@ export class FileMutationHandler {
     this.head = {
       next: null,
       prev: null,
-      el: this.createLineEl(),
+      el: createLineEl(),
     };
     if (fileText.length) this.head = null;
 
@@ -30,7 +38,7 @@ export class FileMutationHandler {
         const newLine: Line = {
           next: null,
           prev: curr,
-          el: this.createLineEl(),
+          el: createLineEl(),
         };
         newLine.el.firstElementChild.textContent = buff;
 
@@ -53,7 +61,7 @@ export class FileMutationHandler {
       const newLine: Line = {
         next: null,
         prev: curr,
-        el: this.createLineEl(),
+        el: createLineEl(),
       };
       newLine.el.firstElementChild.textContent = buff;
 
@@ -66,19 +74,6 @@ export class FileMutationHandler {
       }
       this.size++;
     }
-  }
-
-  getLineFromNode(el: HTMLElement): [Line | null, number] | null {
-    let row = 0;
-    let curr = this.head;
-    while (curr) {
-      if (curr.el.isSameNode(el)) {
-        return [curr, row];
-      }
-      row++;
-      curr = curr.next;
-    }
-    return null;
   }
 
   insertCharacter(line: Line, col: number, ch: string) {
@@ -97,7 +92,7 @@ export class FileMutationHandler {
     const newLine: Line = {
       prev: prevLine,
       next: prevLine.next,
-      el: this.createLineEl(),
+      el: createLineEl(),
     };
     // assign overflow from previous line to new line
     newLine.el.firstElementChild.textContent = textOverflow;
@@ -131,13 +126,5 @@ export class FileMutationHandler {
     this.size--;
 
     return oldLength;
-  }
-
-  createLineEl(): HTMLElement {
-    const lineContainer = (
-      document.getElementById("line") as HTMLTemplateElement
-    ).content.firstElementChild.cloneNode(true) as HTMLElement;
-
-    return lineContainer;
   }
 }

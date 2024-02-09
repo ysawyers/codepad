@@ -11,6 +11,9 @@ interface Line {
 export class Cursor {
   private editorEl: HTMLElement;
 
+  // used to remember the region scoped
+  private offsetFromTop: number;
+
   private currentLine: Line;
   private lineCache: Map<number, Line>;
 
@@ -23,6 +26,7 @@ export class Cursor {
   private keydownEventListener: (e: KeyboardEvent) => void;
 
   constructor(row: number, col: number, fileText: string) {
+    this.offsetFromTop = 0;
     this.row = row;
     this.col = col;
     this.colAnchor = null;
@@ -110,11 +114,10 @@ export class Cursor {
   }
 
   private rerenderLines() {
-    const lineGroup = document.getElementById("line-group");
-    while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
-
     const scopedRegion = document.createDocumentFragment();
     const startingRow = Math.floor(this.editorEl.scrollTop / 16);
+
+    this.offsetFromTop = this.editorEl.scrollTop / 16;
 
     let currLine = this.lineCache.get(startingRow);
     if (!currLine) {
@@ -125,6 +128,9 @@ export class Cursor {
       }
     }
 
+    const lineGroup = document.getElementById("line-group");
+    while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
+
     let offset = 0;
     do {
       if (!currLine) break;
@@ -133,18 +139,30 @@ export class Cursor {
         this.lineCache.set(startingRow + offset, currLine);
 
       let lineEl = currLine.el;
-      currLine.el.addEventListener("click", (e: MouseEvent) => {
+      currLine.el.addEventListener("mousedown", (e: MouseEvent) => {
         let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
 
+        // divided by the width of each char to get the column
         let col = Math.round(distanceFromLeft / 7.8);
         if (col > lineEl.firstElementChild.textContent.length) {
           col = lineEl.firstElementChild.textContent.length;
         }
 
-        const [newLine, newRow] = this.file.getLineFromNode(lineEl);
+        // get relative row of the rendered region (all the lines will be cached at this point)
+        let regionRow = 0;
+        for (let row = 0; row < lineGroup.children.length; row++) {
+          if (lineGroup.children[row].isSameNode(lineEl)) {
+            regionRow = row;
+            break;
+          }
+        }
+
+        const computedRow = Math.floor(this.offsetFromTop) + regionRow;
+
         this.col = col;
-        this.row = newRow;
-        this.updateCurrentLine(newLine);
+        this.row = computedRow;
+
+        this.updateCurrentLine(this.lineCache.get(computedRow));
       });
 
       currLine.el.style.top = `${startingRow + offset}em`;
@@ -160,6 +178,11 @@ export class Cursor {
   foreground() {
     document.getElementById("workspace-group").appendChild(this.editorEl);
     const lineGroup = document.getElementById("line-group");
+
+    this.editorEl.scrollTo({
+      top: this.offsetFromTop * 16,
+      behavior: "instant",
+    });
 
     lineGroup.style.height = `${this.file.size}em`;
     this.rerenderLines();
@@ -278,8 +301,6 @@ export class Cursor {
 
   // cursor is "backgrounded" by default
   background() {
-    const lineGroup = document.getElementById("line-group");
-    while (lineGroup?.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
     this.editorEl.remove();
     document.removeEventListener("keydown", this.keydownEventListener);
   }
