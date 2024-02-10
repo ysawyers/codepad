@@ -11,6 +11,14 @@ interface Line {
 interface Hover {
   startingLine: Line;
   startingCol: number;
+  startingRow: number;
+}
+
+interface Highlight {
+  startingLine: Line;
+  startingCol: number;
+  endingLine: Line;
+  endingCol: number;
 }
 
 export class Cursor {
@@ -31,15 +39,17 @@ export class Cursor {
   private keydownEventListener: (e: KeyboardEvent) => void;
 
   private hovering: Hover | null;
+  private highlightedRegion: Highlight | null;
 
   constructor(row: number, col: number, fileText: string) {
     this.offsetFromTop = 0;
     this.row = row;
     this.col = col;
-    this.colAnchor = null;
     this.lineCache = new Map();
 
     this.hovering = null;
+    this.highlightedRegion = null;
+    this.colAnchor = null;
 
     this.file = new FileMutationHandler(fileText);
 
@@ -49,6 +59,7 @@ export class Cursor {
   }
 
   private navigateLeft() {
+    this.highlightedRegion = null;
     this.colAnchor = null;
     this.col--;
     this.updateCurrentLine(this.currentLine);
@@ -56,6 +67,7 @@ export class Cursor {
   }
 
   private navigateRight() {
+    this.highlightedRegion = null;
     this.colAnchor = null;
     this.col++;
     this.updateCurrentLine(this.currentLine);
@@ -63,6 +75,7 @@ export class Cursor {
   }
 
   private navigateUp() {
+    this.highlightedRegion = null;
     this.row--;
     if (!this.colAnchor) this.colAnchor = this.col;
     if (this.currentLine.prev) {
@@ -78,6 +91,7 @@ export class Cursor {
   }
 
   private navigateDown() {
+    this.highlightedRegion = null;
     this.row++;
     if (!this.colAnchor) this.colAnchor = this.col;
     if (this.currentLine.next) {
@@ -148,7 +162,9 @@ export class Cursor {
 
       let lineEl = currLine.el;
       currLine.el.addEventListener("mousedown", (e: MouseEvent) => {
-        let distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
+        this.highlightedRegion = null;
+
+        const distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
 
         // divided by the width of each char to get the column
         let col = Math.round(distanceFromLeft / 7.8);
@@ -174,6 +190,7 @@ export class Cursor {
         this.hovering = {
           startingLine: newLine,
           startingCol: col,
+          startingRow: computedRow,
         };
       });
 
@@ -184,6 +201,7 @@ export class Cursor {
       offset++;
     } while (offset * 16 <= window.innerHeight);
 
+    // TODO: Add diffing instead of just destroying the whole thing
     while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
     lineGroup.appendChild(scopedRegion);
   }
@@ -257,6 +275,8 @@ export class Cursor {
                 this.file.deleteCharacter(this.currentLine, this.col);
                 this.navigateLeft();
               }
+            } else if (this.highlightedRegion) {
+              console.log("batch delete");
             } else if (this.row > 0) {
               const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
                 this.col
@@ -284,6 +304,11 @@ export class Cursor {
           {
             const textContent = this.currentLine.el.firstElementChild.textContent;
             this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
+
+            if (this.highlightedRegion) {
+              console.log("batch delete");
+            }
+
             this.file.createNewLine(this.currentLine, textContent.slice(this.col));
 
             this.col = 0;
@@ -299,6 +324,11 @@ export class Cursor {
 
         default: {
           const ch = e.key === " " ? "\xa0" : e.key;
+
+          if (this.highlightedRegion) {
+            console.log("batch delete");
+          }
+
           this.file.insertCharacter(this.currentLine, this.col, ch);
           this.navigateRight();
         }
@@ -309,23 +339,34 @@ export class Cursor {
       this.rerenderLines();
     });
 
+    // contained to line-group specifically, hovering will not be active anywhere else
     this.editorEl.lastElementChild.addEventListener("mousemove", (e: MouseEvent) => {
       if (this.hovering) {
-        const absoluteTopRow = Math.floor(this.offsetFromTop);
-        const scopeRow = Math.floor((e.y - 33) / 16);
+        // if not scrolled perfectly aligned on a new line add the additional offset to get to the correct row
+        const offset = this.editorEl.scrollTop % 16;
 
-        const computedRow = absoluteTopRow + scopeRow;
+        const computedRow = Math.floor(this.offsetFromTop) + (Math.floor((e.y + offset) / 16) - 2); // - 2 just cause thats what works ?
         const computerCol = Math.round(e.offsetX / 7.8);
 
-        const currentLineHovering = this.lineCache.get(computedRow);
+        const lineHovering = this.lineCache.get(computedRow);
 
-        if (computerCol > currentLineHovering.el.firstElementChild.textContent.length) {
-          this.col = currentLineHovering.el.firstElementChild.textContent.length;
+        if (computerCol > lineHovering.el.firstElementChild.textContent.length) {
+          this.col = lineHovering.el.firstElementChild.textContent.length;
         } else if (computerCol > 0) {
           this.col = computerCol;
         }
 
-        this.updateCurrentLine(currentLineHovering);
+        this.updateCurrentLine(lineHovering);
+        if (this.hovering.startingRow > computedRow) {
+          console.log("highlight backwards");
+        } else if (this.hovering.startingRow < computedRow) {
+          console.log("highlight forwards");
+        }
+        this.highlightedRegion = {
+          ...this.hovering,
+          endingLine: lineHovering,
+          endingCol: computerCol,
+        };
       }
     });
 
