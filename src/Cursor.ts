@@ -313,11 +313,17 @@ export class Cursor {
       if (this.hovering) {
         const absoluteTopRow = Math.floor(this.offsetFromTop);
         const scopeRow = Math.floor((e.y - 33) / 16);
+
         const computedRow = absoluteTopRow + scopeRow;
+        const computerCol = Math.round(e.offsetX / 7.8);
 
         const currentLineHovering = this.lineCache.get(computedRow);
 
-        const col = Math.round(e.offsetX / 7.8);
+        if (computerCol > currentLineHovering.el.firstElementChild.textContent.length) {
+          this.col = currentLineHovering.el.firstElementChild.textContent.length;
+        } else if (computerCol > 0) {
+          this.col = computerCol;
+        }
 
         this.updateCurrentLine(currentLineHovering);
       }
