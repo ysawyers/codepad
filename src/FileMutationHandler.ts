@@ -6,6 +6,14 @@ interface Line {
   next: Line | null;
 }
 
+interface Highlight {
+  startingLine: Line;
+  startingCol: number;
+  endingLine: Line;
+  endingCol: number;
+  isBackwards: boolean;
+}
+
 function createLineEl(): HTMLElement {
   const lineContainer = (
     document.getElementById("line") as HTMLTemplateElement
@@ -128,9 +136,44 @@ export class FileMutationHandler {
     return oldLength;
   }
 
-  // TODO
-  batchInsert() {}
+  batchRemove(range: Highlight) {
+    // EDGE CASE: have to handle uniquely otherwise reference to all nodes below will be destroyed
+    if (range.endingLine == range.startingLine) {
+      let oldText = range.startingLine.el.firstElementChild.textContent;
 
-  // TODO
-  batchRemove() {}
+      if (range.isBackwards) {
+        range.endingLine.el.firstElementChild.textContent =
+          oldText.slice(0, range.endingCol) + oldText.slice(range.startingCol);
+      } else {
+        range.startingLine.el.firstElementChild.textContent =
+          oldText.slice(0, range.startingCol) + oldText.slice(range.endingCol);
+      }
+      return;
+    }
+
+    if (range.isBackwards) {
+      const endingLineText = range.endingLine.el.firstElementChild.textContent;
+      range.endingLine.el.firstElementChild.textContent = endingLineText.slice(0, range.endingCol);
+
+      const startingLineText = range.startingLine.el.firstElementChild.textContent;
+      range.startingLine.el.firstElementChild.textContent = startingLineText.slice(
+        range.startingCol
+      );
+
+      range.endingLine.next = range.startingLine;
+      range.startingLine.prev = range.endingLine;
+    } else {
+      const startingLineText = range.startingLine.el.firstElementChild.textContent;
+      range.startingLine.el.firstElementChild.textContent = startingLineText.slice(
+        0,
+        range.startingCol
+      );
+
+      const endingLineText = range.endingLine.el.firstElementChild.textContent;
+      range.endingLine.el.firstElementChild.textContent = endingLineText.slice(range.endingCol);
+
+      range.startingLine.next = range.endingLine;
+      range.endingLine.prev = range.startingLine;
+    }
+  }
 }

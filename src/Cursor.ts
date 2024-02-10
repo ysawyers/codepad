@@ -19,6 +19,15 @@ interface Highlight {
   startingCol: number;
   endingLine: Line;
   endingCol: number;
+  isBackwards: boolean;
+}
+
+function createHighlightEl() {
+  const highlightContainer = document.createElement("div");
+  highlightContainer.style.backgroundColor = "white";
+  highlightContainer.style.position = "absolute";
+  highlightContainer.style.height = "1em";
+  return highlightContainer;
 }
 
 export class Cursor {
@@ -30,7 +39,6 @@ export class Cursor {
   private currentLine: Line;
   private lineCache: Map<number, Line>;
 
-  // TODO: eventually turn this into a proxy
   private row: number;
   private col: number;
   private colAnchor: number | null;
@@ -121,6 +129,31 @@ export class Cursor {
     }
   }
 
+  // returns true if deletion was successful
+  private deleteHighlightedRegion(): boolean {
+    if (this.highlightedRegion) {
+      this.lineCache = new Map();
+      this.file.batchRemove(this.highlightedRegion);
+
+      if (this.highlightedRegion.isBackwards) {
+        this.col = this.highlightedRegion.endingCol;
+        this.updateCurrentLine(this.highlightedRegion.endingLine);
+      } else {
+        this.col = this.highlightedRegion.startingCol;
+        this.updateCurrentLine(this.highlightedRegion.startingLine);
+      }
+      this.highlightedRegion = null;
+      this.updateScopedLines();
+
+      return true;
+    }
+    return false;
+  }
+
+  private updateHighlightedRegion() {
+    // TODO
+  }
+
   private updateCurrentLine(currLine: Line) {
     if (this.currentLine) {
       this.currentLine.el.removeChild(this.currentLine.el.lastElementChild);
@@ -136,7 +169,8 @@ export class Cursor {
     this.currentLine = currLine;
   }
 
-  private rerenderLines() {
+  // updates the DOM with lines that are in scope based on scroll position
+  private updateScopedLines() {
     const scopedRegion = document.createDocumentFragment();
     const startingRow = Math.floor(this.editorEl.scrollTop / 16);
 
@@ -216,7 +250,7 @@ export class Cursor {
     });
 
     lineGroup.style.height = `${this.file.size}em`;
-    this.rerenderLines();
+    this.updateScopedLines();
 
     this.keydownEventListener = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -254,6 +288,10 @@ export class Cursor {
 
         case "Tab":
           {
+            if (this.highlightedRegion) {
+              // TODO: apply tab to all highlighted rows
+            }
+
             for (let i = 0; i < 4; i++) {
               this.file.insertCharacter(this.currentLine, this.col, "\xa0");
               this.navigateRight();
@@ -263,6 +301,8 @@ export class Cursor {
 
         case "Backspace":
           {
+            if (this.deleteHighlightedRegion()) break;
+
             if (this.col != 0) {
               const text = this.currentLine.el.firstElementChild.textContent;
               const tab = "\xa0\xa0\xa0\xa0";
@@ -275,18 +315,15 @@ export class Cursor {
                 this.file.deleteCharacter(this.currentLine, this.col);
                 this.navigateLeft();
               }
-            } else if (this.highlightedRegion) {
-              console.log("batch delete");
             } else if (this.row > 0) {
               const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
                 this.col
               );
 
+              this.lineCache = new Map();
               this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
 
-              // clear cache before rerendering lines since lines are now reordered
-              this.lineCache = new Map();
-              this.rerenderLines();
+              this.updateScopedLines();
 
               this.colAnchor = null;
               this.navigateUp();
@@ -302,12 +339,10 @@ export class Cursor {
 
         case "Enter":
           {
+            this.deleteHighlightedRegion();
+
             const textContent = this.currentLine.el.firstElementChild.textContent;
             this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
-
-            if (this.highlightedRegion) {
-              console.log("batch delete");
-            }
 
             this.file.createNewLine(this.currentLine, textContent.slice(this.col));
 
@@ -315,7 +350,7 @@ export class Cursor {
 
             // clear cache before rerendering lines since lines are now reordered
             this.lineCache = new Map();
-            this.rerenderLines();
+            this.updateScopedLines();
 
             this.colAnchor = null;
             this.navigateDown();
@@ -323,12 +358,9 @@ export class Cursor {
           break;
 
         default: {
+          this.deleteHighlightedRegion();
+
           const ch = e.key === " " ? "\xa0" : e.key;
-
-          if (this.highlightedRegion) {
-            console.log("batch delete");
-          }
-
           this.file.insertCharacter(this.currentLine, this.col, ch);
           this.navigateRight();
         }
@@ -336,7 +368,7 @@ export class Cursor {
     };
 
     this.editorEl.addEventListener("scroll", (e: Event) => {
-      this.rerenderLines();
+      this.updateScopedLines();
     });
 
     // contained to line-group specifically, hovering will not be active anywhere else
@@ -346,27 +378,29 @@ export class Cursor {
         const offset = this.editorEl.scrollTop % 16;
 
         const computedRow = Math.floor(this.offsetFromTop) + (Math.floor((e.y + offset) / 16) - 2); // - 2 just cause thats what works ?
-        const computerCol = Math.round(e.offsetX / 7.8);
+        const computedCol = Math.round(e.offsetX / 7.8);
 
         const lineHovering = this.lineCache.get(computedRow);
 
-        if (computerCol > lineHovering.el.firstElementChild.textContent.length) {
+        if (computedCol > lineHovering.el.firstElementChild.textContent.length) {
           this.col = lineHovering.el.firstElementChild.textContent.length;
-        } else if (computerCol > 0) {
-          this.col = computerCol;
+        } else if (computedCol > 0) {
+          this.col = computedCol;
         }
 
-        this.updateCurrentLine(lineHovering);
-        if (this.hovering.startingRow > computedRow) {
-          console.log("highlight backwards");
-        } else if (this.hovering.startingRow < computedRow) {
-          console.log("highlight forwards");
-        }
         this.highlightedRegion = {
           ...this.hovering,
           endingLine: lineHovering,
-          endingCol: computerCol,
+          endingCol: this.col,
+          isBackwards:
+            this.hovering.startingRow === computedRow
+              ? this.hovering.startingCol > this.col
+              : this.hovering.startingRow > computedRow,
         };
+
+        console.log(this.highlightedRegion.isBackwards);
+
+        this.updateCurrentLine(lineHovering);
       }
     });
 
