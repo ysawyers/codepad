@@ -1,4 +1,4 @@
-// TODO: Think about how to make opening extremely large files fast.
+// TODO: To open files faster only create line element when requested not on immedietly opening the file.
 
 interface Line {
   el: HTMLElement;
@@ -137,7 +137,6 @@ export class FileMutationHandler {
   }
 
   batchRemove(range: Highlight) {
-    // EDGE CASE: have to handle uniquely otherwise reference to all nodes below will be destroyed
     if (range.endingLine == range.startingLine) {
       let oldText = range.startingLine.el.firstElementChild.textContent;
 
@@ -152,28 +151,23 @@ export class FileMutationHandler {
     }
 
     if (range.isBackwards) {
-      const endingLineText = range.endingLine.el.firstElementChild.textContent;
-      range.endingLine.el.firstElementChild.textContent = endingLineText.slice(0, range.endingCol);
-
       const startingLineText = range.startingLine.el.firstElementChild.textContent;
-      range.startingLine.el.firstElementChild.textContent = startingLineText.slice(
-        range.startingCol
-      );
 
-      range.endingLine.next = range.startingLine;
-      range.startingLine.prev = range.endingLine;
+      const endingLineText = range.endingLine.el.firstElementChild.textContent;
+      range.endingLine.el.firstElementChild.textContent =
+        endingLineText.slice(0, range.endingCol) + startingLineText.slice(range.startingCol);
+
+      range.endingLine.next = range.startingLine.next;
+      range.startingLine.next.prev = range.endingLine;
     } else {
-      const startingLineText = range.startingLine.el.firstElementChild.textContent;
-      range.startingLine.el.firstElementChild.textContent = startingLineText.slice(
-        0,
-        range.startingCol
-      );
-
       const endingLineText = range.endingLine.el.firstElementChild.textContent;
-      range.endingLine.el.firstElementChild.textContent = endingLineText.slice(range.endingCol);
 
-      range.startingLine.next = range.endingLine;
-      range.endingLine.prev = range.startingLine;
+      const startingLineText = range.startingLine.el.firstElementChild.textContent;
+      range.startingLine.el.firstElementChild.textContent =
+        startingLineText.slice(0, range.startingCol) + endingLineText.slice(range.endingCol);
+
+      range.startingLine.next = range.endingLine.next;
+      range.endingLine.next.prev = range.startingLine;
     }
   }
 }

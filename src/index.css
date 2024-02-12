@@ -146,6 +146,7 @@ body {
   color: white;
   font-family: "DM Mono", monospace;
   font-size: 13px;
+  pointer-events: stroke;
 }
 
 .cursor {
@@ -153,6 +154,7 @@ body {
   width: 1.5px;
   height: 1em;
   background-color: #0078d4;
+  pointer-events: none;
 }
 
 .sidebar-item {
@@ -171,4 +173,15 @@ body {
   height: 100%;
   background-color: #1b1c26;
   position: sticky;
+}
+
+.highlight {
+  position: absolute;
+  background-color: rgba(219, 221, 223, 0.1);
+  height: 1em;
+  border-radius: 2px;
+}
+
+span::selection {
+  background-color: rgba(219, 221, 223, 0.3);
 }

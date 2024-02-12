@@ -24,9 +24,7 @@ interface Highlight {
 
 function createHighlightEl() {
   const highlightContainer = document.createElement("div");
-  highlightContainer.style.backgroundColor = "white";
-  highlightContainer.style.position = "absolute";
-  highlightContainer.style.height = "1em";
+  highlightContainer.className = "highlight";
   return highlightContainer;
 }
 
@@ -154,7 +152,7 @@ export class Cursor {
     // TODO
   }
 
-  private updateCurrentLine(currLine: Line) {
+  private updateCurrentLine(currLine: Line, focused: boolean = true) {
     if (this.currentLine) {
       this.currentLine.el.removeChild(this.currentLine.el.lastElementChild);
       this.currentLine.el.style.backgroundColor = "";
@@ -162,9 +160,9 @@ export class Cursor {
 
     const cursor = document.createElement("div");
     cursor.className = "cursor";
-    cursor.style.marginLeft = `${this.col * 7.8}px`;
+    cursor.style.left = `${this.col * 7.8}px`;
     currLine.el.appendChild(cursor);
-    currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
+    if (focused) currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
 
     this.currentLine = currLine;
   }
@@ -187,55 +185,55 @@ export class Cursor {
 
     const lineGroup = document.getElementById("line-group");
 
-    let offset = 0;
+    let scopeLineRow = 0;
     do {
       if (!currLine) break;
 
-      if (!this.lineCache.has(startingRow + offset))
-        this.lineCache.set(startingRow + offset, currLine);
+      if (!this.lineCache.has(startingRow + scopeLineRow)) {
+        this.lineCache.set(startingRow + scopeLineRow, currLine);
+        currLine.el.style.top = `${startingRow + scopeLineRow}em`;
 
-      let lineEl = currLine.el;
-      currLine.el.addEventListener("mousedown", (e: MouseEvent) => {
-        this.highlightedRegion = null;
+        let lineEl = currLine.el;
+        currLine.el.addEventListener("mousedown", (e: MouseEvent) => {
+          this.highlightedRegion = null;
 
-        const distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
+          const distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
 
-        // divided by the width of each char to get the column
-        let col = Math.round(distanceFromLeft / 7.8);
-        if (col > lineEl.firstElementChild.textContent.length) {
-          col = lineEl.firstElementChild.textContent.length;
-        }
-
-        // get relative row of the rendered region (all the lines will be cached at this point)
-        let regionRow = 0;
-        for (let row = 0; row < lineGroup.children.length; row++) {
-          if (lineGroup.children[row].isSameNode(lineEl)) {
-            regionRow = row;
-            break;
+          // divided by the width of each char to get the column
+          let col = Math.round(distanceFromLeft / 7.8);
+          if (col > lineEl.firstElementChild.textContent.length) {
+            col = lineEl.firstElementChild.textContent.length;
           }
-        }
 
-        const computedRow = Math.floor(this.offsetFromTop) + regionRow;
-        const newLine = this.lineCache.get(computedRow);
-        this.col = col;
-        this.row = computedRow;
-        this.updateCurrentLine(newLine);
+          // get relative row of the rendered region (all the lines will be cached at this point)
+          let regionRow = 0;
+          for (let row = 0; row < lineGroup.children.length; row++) {
+            if (lineGroup.children[row].isSameNode(lineEl)) {
+              regionRow = row;
+              break;
+            }
+          }
 
-        this.hovering = {
-          startingLine: newLine,
-          startingCol: col,
-          startingRow: computedRow,
-        };
-      });
+          const computedRow = Math.floor(this.offsetFromTop) + regionRow;
+          const newLine = this.lineCache.get(computedRow);
+          this.col = col;
+          this.row = computedRow;
+          this.updateCurrentLine(newLine);
 
-      currLine.el.style.top = `${startingRow + offset}em`;
+          this.hovering = {
+            startingLine: newLine,
+            startingCol: col,
+            startingRow: computedRow,
+          };
+        });
+      }
+
       scopedRegion.appendChild(currLine.el);
 
       currLine = currLine.next;
-      offset++;
-    } while (offset * 16 <= window.innerHeight);
+      scopeLineRow++;
+    } while (scopeLineRow * 16 <= Math.ceil(window.innerHeight / 16) * 16);
 
-    // TODO: Add diffing instead of just destroying the whole thing
     while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
     lineGroup.appendChild(scopedRegion);
   }
@@ -398,9 +396,7 @@ export class Cursor {
               : this.hovering.startingRow > computedRow,
         };
 
-        console.log(this.highlightedRegion.isBackwards);
-
-        this.updateCurrentLine(lineHovering);
+        this.updateCurrentLine(lineHovering, false);
       }
     });
 
