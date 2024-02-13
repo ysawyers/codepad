@@ -1,11 +1,14 @@
 import { FileMutationHandler } from "./FileMutationHandler";
+import { throttledEventListener } from "./utils";
 
-// IMPORTANT NOTE: EVERYTHING IS WRITTEN WITH THE NOTION OF A CONSTANT LINE HEIGHT OF 1EM = 16 PX
+const LINE_HEIGHT = 16;
+
+// train tracks, instead of re-rendering just use the absolute position to "move" around the DOM! lines on the bottom should stay the longest before being re-rendered FILO. Append the node that should be removed
 
 interface Line {
-  el: HTMLElement;
   prev: Line | null;
   next: Line | null;
+  value: string;
 }
 
 interface Hover {
@@ -31,12 +34,14 @@ function createHighlightEl() {
 export class Cursor {
   private editorEl: HTMLElement;
 
+  private lineRenderingQueue: HTMLElement[];
+  private lineCache: Map<HTMLElement, [number, Line]>;
+
   // used to remember the region scoped
-  private offsetFromTop: number;
+  private viewportHeight: number;
+  private scrollOffsetFromTop: number;
 
   private currentLine: Line;
-  private lineCache: Map<number, Line>;
-
   private row: number;
   private col: number;
   private colAnchor: number | null;
@@ -48,9 +53,12 @@ export class Cursor {
   private highlightedRegion: Highlight | null;
 
   constructor(row: number, col: number, fileText: string) {
-    this.offsetFromTop = 0;
+    this.viewportHeight = window.innerHeight;
+    this.scrollOffsetFromTop = 0;
     this.row = row;
     this.col = col;
+
+    this.lineRenderingQueue = [];
     this.lineCache = new Map();
 
     this.hovering = null;
@@ -81,71 +89,68 @@ export class Cursor {
   }
 
   private navigateUp() {
-    this.highlightedRegion = null;
-    this.row--;
-    if (!this.colAnchor) this.colAnchor = this.col;
-    if (this.currentLine.prev) {
-      const textLength = this.currentLine.prev.el.firstElementChild.textContent.length;
-      if (this.colAnchor > textLength) {
-        this.col = textLength;
-      } else {
-        this.col = this.colAnchor;
-      }
-      this.updateCurrentLine(this.currentLine.prev);
-    }
-    this.forceScrollToViewCursor();
+    // this.highlightedRegion = null;
+    // this.row--;
+    // if (!this.colAnchor) this.colAnchor = this.col;
+    // if (this.currentLine.prev) {
+    //   const textLength = this.currentLine.prev.el.firstElementChild.textContent.length;
+    //   if (this.colAnchor > textLength) {
+    //     this.col = textLength;
+    //   } else {
+    //     this.col = this.colAnchor;
+    //   }
+    //   this.updateCurrentLine(this.currentLine.prev);
+    // }
+    // this.forceScrollToViewCursor();
   }
 
   private navigateDown() {
-    this.highlightedRegion = null;
-    this.row++;
-    if (!this.colAnchor) this.colAnchor = this.col;
-    if (this.currentLine.next) {
-      const textLength = this.currentLine.next.el.firstElementChild.textContent.length;
-      if (this.colAnchor > textLength) {
-        this.col = textLength;
-      } else {
-        this.col = this.colAnchor;
-      }
-      this.updateCurrentLine(this.currentLine.next);
-    }
-    this.forceScrollToViewCursor();
+    // this.highlightedRegion = null;
+    // this.row++;
+    // if (!this.colAnchor) this.colAnchor = this.col;
+    // if (this.currentLine.next) {
+    //   const textLength = this.currentLine.next.el.firstElementChild.textContent.length;
+    //   if (this.colAnchor > textLength) {
+    //     this.col = textLength;
+    //   } else {
+    //     this.col = this.colAnchor;
+    //   }
+    //   this.updateCurrentLine(this.currentLine.next);
+    // }
+    // this.forceScrollToViewCursor();
   }
 
   private forceScrollToViewCursor() {
-    if (!this.currentLine.el.isConnected) {
-      let offsetFromTop = 0;
-      let curr = this.currentLine;
-      while (curr) {
-        offsetFromTop++;
-        curr = curr.prev;
-      }
-      this.editorEl.scrollTo({
-        top: offsetFromTop * 16 - 16,
-        behavior: "instant",
-      });
-    }
+    // if (!this.currentLine.el.isConnected) {
+    //   let offsetFromTop = 0;
+    //   let curr = this.currentLine;
+    //   while (curr) {
+    //     offsetFromTop++;
+    //     curr = curr.prev;
+    //   }
+    //   this.editorEl.scrollTo({
+    //     top: offsetFromTop * 16 - 16,
+    //     behavior: "instant",
+    //   });
+    // }
   }
 
   // returns true if deletion was successful
-  private deleteHighlightedRegion(): boolean {
-    if (this.highlightedRegion) {
-      this.lineCache = new Map();
-      this.file.batchRemove(this.highlightedRegion);
-
-      if (this.highlightedRegion.isBackwards) {
-        this.col = this.highlightedRegion.endingCol;
-        this.updateCurrentLine(this.highlightedRegion.endingLine);
-      } else {
-        this.col = this.highlightedRegion.startingCol;
-        this.updateCurrentLine(this.highlightedRegion.startingLine);
-      }
-      this.highlightedRegion = null;
-      this.updateScopedLines();
-
-      return true;
-    }
-    return false;
+  private deleteHighlightedRegion() {
+    // if (this.highlightedRegion) {
+    //   this.lineCache = new Map();
+    //   this.file.batchRemove(this.highlightedRegion);
+    //   if (this.highlightedRegion.isBackwards) {
+    //     this.col = this.highlightedRegion.endingCol;
+    //     this.updateCurrentLine(this.highlightedRegion.endingLine);
+    //   } else {
+    //     this.col = this.highlightedRegion.startingCol;
+    //     this.updateCurrentLine(this.highlightedRegion.startingLine);
+    //   }
+    //   this.highlightedRegion = null;
+    //   return true;
+    // }
+    // return false;
   }
 
   private updateHighlightedRegion() {
@@ -153,251 +158,219 @@ export class Cursor {
   }
 
   private updateCurrentLine(currLine: Line, focused: boolean = true) {
-    if (this.currentLine) {
-      this.currentLine.el.removeChild(this.currentLine.el.lastElementChild);
-      this.currentLine.el.style.backgroundColor = "";
-    }
-
-    const cursor = document.createElement("div");
-    cursor.className = "cursor";
-    cursor.style.left = `${this.col * 7.8}px`;
-    currLine.el.appendChild(cursor);
-    if (focused) currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
-
-    this.currentLine = currLine;
-  }
-
-  // updates the DOM with lines that are in scope based on scroll position
-  private updateScopedLines() {
-    const scopedRegion = document.createDocumentFragment();
-    const startingRow = Math.floor(this.editorEl.scrollTop / 16);
-
-    this.offsetFromTop = this.editorEl.scrollTop / 16;
-
-    let currLine = this.lineCache.get(startingRow);
-    if (!currLine) {
-      currLine = this.file.head;
-      for (let row = 0; row < startingRow; row++) {
-        if (!currLine) break;
-        if (currLine.next) currLine = currLine.next;
-      }
-    }
-
-    const lineGroup = document.getElementById("line-group");
-
-    let scopeLineRow = 0;
-    do {
-      if (!currLine) break;
-
-      if (!this.lineCache.has(startingRow + scopeLineRow)) {
-        this.lineCache.set(startingRow + scopeLineRow, currLine);
-        currLine.el.style.top = `${startingRow + scopeLineRow}em`;
-
-        let lineEl = currLine.el;
-        currLine.el.addEventListener("mousedown", (e: MouseEvent) => {
-          this.highlightedRegion = null;
-
-          const distanceFromLeft = e.clientX - lineEl.parentElement.getBoundingClientRect().left;
-
-          // divided by the width of each char to get the column
-          let col = Math.round(distanceFromLeft / 7.8);
-          if (col > lineEl.firstElementChild.textContent.length) {
-            col = lineEl.firstElementChild.textContent.length;
-          }
-
-          // get relative row of the rendered region (all the lines will be cached at this point)
-          let regionRow = 0;
-          for (let row = 0; row < lineGroup.children.length; row++) {
-            if (lineGroup.children[row].isSameNode(lineEl)) {
-              regionRow = row;
-              break;
-            }
-          }
-
-          const computedRow = Math.floor(this.offsetFromTop) + regionRow;
-          const newLine = this.lineCache.get(computedRow);
-          this.col = col;
-          this.row = computedRow;
-          this.updateCurrentLine(newLine);
-
-          this.hovering = {
-            startingLine: newLine,
-            startingCol: col,
-            startingRow: computedRow,
-          };
-        });
-      }
-
-      scopedRegion.appendChild(currLine.el);
-
-      currLine = currLine.next;
-      scopeLineRow++;
-    } while (scopeLineRow * 16 <= Math.ceil(window.innerHeight / 16) * 16);
-
-    while (lineGroup.children.length) lineGroup.removeChild(lineGroup.lastElementChild);
-    lineGroup.appendChild(scopedRegion);
+    // if (this.currentLine) {
+    //   this.currentLine.el.removeChild(this.currentLine.el.lastElementChild);
+    //   this.currentLine.el.style.backgroundColor = "";
+    // }
+    // const cursor = document.createElement("div");
+    // cursor.className = "cursor";
+    // cursor.style.left = `${this.col * 7.8}px`;
+    // currLine.el.appendChild(cursor);
+    // if (focused) currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
+    // this.currentLine = currLine;
   }
 
   foreground() {
     document.getElementById("workspace-group").appendChild(this.editorEl);
+
     const lineGroup = document.getElementById("line-group");
 
-    this.editorEl.scrollTo({
-      top: this.offsetFromTop * 16,
-      behavior: "instant",
-    });
-
     lineGroup.style.height = `${this.file.size}em`;
-    this.updateScopedLines();
+
+    const initialQueueSize =
+      (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
+
+    let curr = this.file.head;
+
+    for (let i = 0; i < initialQueueSize; i++) {
+      const lineContainer = document.createElement("div");
+      lineContainer.className = "line";
+      lineContainer.style.top = `${i}em`;
+
+      const textEl = document.createElement("span");
+      textEl.className = "default-line-text";
+      textEl.textContent = curr.value;
+
+      lineContainer.appendChild(textEl);
+
+      this.lineRenderingQueue.push(lineContainer);
+      lineGroup.appendChild(lineContainer);
+
+      this.lineCache.set(lineContainer, [i, curr]);
+      curr = curr.next;
+    }
 
     this.keydownEventListener = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "ArrowUp":
-          if (this.row > 0) this.navigateUp();
-          break;
-
-        case "ArrowDown":
-          const linesGroupEl = document.getElementById("line-group");
-          if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) this.navigateDown();
-          break;
-
-        case "ArrowLeft":
-          if (this.col > 0) {
-            this.navigateLeft();
-          } else if (this.row > 0) {
-            this.col = this.currentLine.prev.el.textContent.length;
-            this.navigateUp();
-          }
-          break;
-
-        case "ArrowRight":
-          {
-            const linesGroupEl = document.getElementById("line-group");
-
-            const text = this.currentLine.el.firstElementChild.textContent;
-            if (this.col < text.length) {
-              this.navigateRight();
-            } else if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) {
-              this.col = 0;
-              this.navigateDown();
-            }
-          }
-          break;
-
-        case "Tab":
-          {
-            if (this.highlightedRegion) {
-              // TODO: apply tab to all highlighted rows
-            }
-
-            for (let i = 0; i < 4; i++) {
-              this.file.insertCharacter(this.currentLine, this.col, "\xa0");
-              this.navigateRight();
-            }
-          }
-          break;
-
-        case "Backspace":
-          {
-            if (this.deleteHighlightedRegion()) break;
-
-            if (this.col != 0) {
-              const text = this.currentLine.el.firstElementChild.textContent;
-              const tab = "\xa0\xa0\xa0\xa0";
-              if (this.col > 3 && text.slice(this.col - 4, this.col) === tab) {
-                for (let i = 0; i < 4; i++) {
-                  this.file.deleteCharacter(this.currentLine, this.col);
-                  this.navigateLeft();
-                }
-              } else {
-                this.file.deleteCharacter(this.currentLine, this.col);
-                this.navigateLeft();
-              }
-            } else if (this.row > 0) {
-              const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
-                this.col
-              );
-
-              this.lineCache = new Map();
-              this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
-
-              this.updateScopedLines();
-
-              this.colAnchor = null;
-              this.navigateUp();
-            }
-          }
-          break;
-
-        case "Shift":
-          break;
-
-        case "Meta":
-          break;
-
-        case "Enter":
-          {
-            this.deleteHighlightedRegion();
-
-            const textContent = this.currentLine.el.firstElementChild.textContent;
-            this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
-
-            this.file.createNewLine(this.currentLine, textContent.slice(this.col));
-
-            this.col = 0;
-
-            // clear cache before rerendering lines since lines are now reordered
-            this.lineCache = new Map();
-            this.updateScopedLines();
-
-            this.colAnchor = null;
-            this.navigateDown();
-          }
-          break;
-
-        default: {
-          this.deleteHighlightedRegion();
-
-          const ch = e.key === " " ? "\xa0" : e.key;
-          this.file.insertCharacter(this.currentLine, this.col, ch);
-          this.navigateRight();
-        }
-      }
+      // switch (e.key) {
+      //   case "ArrowUp":
+      //     if (this.row > 0) this.navigateUp();
+      //     break;
+      //   case "ArrowDown":
+      //     const linesGroupEl = document.getElementById("line-group");
+      //     if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) this.navigateDown();
+      //     break;
+      //   case "ArrowLeft":
+      //     if (this.col > 0) {
+      //       this.navigateLeft();
+      //     } else if (this.row > 0) {
+      //       this.col = this.currentLine.prev.el.textContent.length;
+      //       this.navigateUp();
+      //     }
+      //     break;
+      //   case "ArrowRight":
+      //     {
+      //       const linesGroupEl = document.getElementById("line-group");
+      //       const text = this.currentLine.el.firstElementChild.textContent;
+      //       if (this.col < text.length) {
+      //         this.navigateRight();
+      //       } else if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) {
+      //         this.col = 0;
+      //         this.navigateDown();
+      //       }
+      //     }
+      //     break;
+      //   case "Tab":
+      //     {
+      //       if (this.highlightedRegion) {
+      //         // TODO: apply tab to all highlighted rows
+      //       }
+      //       for (let i = 0; i < 4; i++) {
+      //         this.file.insertCharacter(this.currentLine, this.col, "\xa0");
+      //         this.navigateRight();
+      //       }
+      //     }
+      //     break;
+      //   case "Backspace":
+      //     {
+      //       if (this.deleteHighlightedRegion()) break;
+      //       if (this.col != 0) {
+      //         const text = this.currentLine.el.firstElementChild.textContent;
+      //         const tab = "\xa0\xa0\xa0\xa0";
+      //         if (this.col > 3 && text.slice(this.col - 4, this.col) === tab) {
+      //           for (let i = 0; i < 4; i++) {
+      //             this.file.deleteCharacter(this.currentLine, this.col);
+      //             this.navigateLeft();
+      //           }
+      //         } else {
+      //           this.file.deleteCharacter(this.currentLine, this.col);
+      //           this.navigateLeft();
+      //         }
+      //       } else if (this.row > 0) {
+      //         const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
+      //           this.col
+      //         );
+      //         this.lineCache = new Map();
+      //         this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
+      //         this.colAnchor = null;
+      //         this.navigateUp();
+      //       }
+      //     }
+      //     break;
+      //   case "Shift":
+      //     break;
+      //   case "Meta":
+      //     break;
+      //   case "Enter":
+      //     {
+      //       this.deleteHighlightedRegion();
+      //       const textContent = this.currentLine.el.firstElementChild.textContent;
+      //       this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
+      //       this.file.createNewLine(this.currentLine, textContent.slice(this.col));
+      //       this.col = 0;
+      //       // clear cache before rerendering lines since lines are now reordered
+      //       this.lineCache = new Map();
+      //       this.colAnchor = null;
+      //       this.navigateDown();
+      //     }
+      //     break;
+      //   default: {
+      //     this.deleteHighlightedRegion();
+      //     const ch = e.key === " " ? "\xa0" : e.key;
+      //     this.file.insertCharacter(this.currentLine, this.col, ch);
+      //     this.navigateRight();
+      //   }
+      // }
     };
 
-    this.editorEl.addEventListener("scroll", (e: Event) => {
-      this.updateScopedLines();
+    throttledEventListener(this.editorEl, "scroll", () => {
+      const isScrollingDown = this.editorEl.scrollTop > this.scrollOffsetFromTop;
+      this.scrollOffsetFromTop = this.editorEl.scrollTop;
+
+      const lastVisibleLinePos =
+        this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top;
+      const firstVisibleLinePos = this.lineRenderingQueue[0].getBoundingClientRect().top;
+      const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
+
+      if (shouldRemapQueue) {
+        this.lineCache = new Map();
+
+        const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
+        let currLine = this.file.getLineFromRow(startingRow);
+
+        for (let i = 0; i < this.lineRenderingQueue.length; i++) {
+          this.lineCache.set(this.lineRenderingQueue[i], [startingRow + i, currLine]);
+          this.lineRenderingQueue[i].style.top = `${startingRow + i}em`;
+          this.lineRenderingQueue[i].firstElementChild.textContent = currLine.value;
+          currLine = currLine.next;
+        }
+      } else if (isScrollingDown) {
+        while (this.lineRenderingQueue[0].getBoundingClientRect().top < 0) {
+          const lineEl = this.lineRenderingQueue.shift();
+
+          const lastLineRendered = this.lineRenderingQueue[this.lineRenderingQueue.length - 1];
+          const [row, line] = this.lineCache.get(lastLineRendered);
+
+          lineEl.style.top = `${row + 1}em`;
+          lineEl.firstElementChild.textContent = line.next.value;
+
+          this.lineCache.set(lineEl, [row + 1, line.next]);
+
+          this.lineRenderingQueue.push(lineEl);
+        }
+      } else {
+        while (
+          this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top >
+          this.viewportHeight
+        ) {
+          const lineEl = this.lineRenderingQueue.pop();
+
+          const firstLineRendered = this.lineRenderingQueue[0];
+          const [row, line] = this.lineCache.get(firstLineRendered);
+
+          lineEl.style.top = `${row - 1}em`;
+          lineEl.firstElementChild.textContent = line.prev.value;
+
+          this.lineCache.set(lineEl, [row - 1, line.prev]);
+
+          this.lineRenderingQueue.unshift(lineEl);
+        }
+      }
     });
 
     // contained to line-group specifically, hovering will not be active anywhere else
     this.editorEl.lastElementChild.addEventListener("mousemove", (e: MouseEvent) => {
-      if (this.hovering) {
-        // if not scrolled perfectly aligned on a new line add the additional offset to get to the correct row
-        const offset = this.editorEl.scrollTop % 16;
-
-        const computedRow = Math.floor(this.offsetFromTop) + (Math.floor((e.y + offset) / 16) - 2); // - 2 just cause thats what works ?
-        const computedCol = Math.round(e.offsetX / 7.8);
-
-        const lineHovering = this.lineCache.get(computedRow);
-
-        if (computedCol > lineHovering.el.firstElementChild.textContent.length) {
-          this.col = lineHovering.el.firstElementChild.textContent.length;
-        } else if (computedCol > 0) {
-          this.col = computedCol;
-        }
-
-        this.highlightedRegion = {
-          ...this.hovering,
-          endingLine: lineHovering,
-          endingCol: this.col,
-          isBackwards:
-            this.hovering.startingRow === computedRow
-              ? this.hovering.startingCol > this.col
-              : this.hovering.startingRow > computedRow,
-        };
-
-        this.updateCurrentLine(lineHovering, false);
-      }
+      // if (this.hovering) {
+      //   // if not scrolled perfectly aligned on a new line add the additional offset to get to the correct row
+      //   const offset = this.editorEl.scrollTop % 16;
+      //   const computedRow = Math.floor(this.offsetFromTop) + (Math.floor((e.y + offset) / 16) - 2); // - 2 just cause thats what works ?
+      //   const computedCol = Math.round(e.offsetX / 7.8);
+      //   const lineHovering = this.lineCache.get(computedRow);
+      //   if (computedCol > lineHovering.el.firstElementChild.textContent.length) {
+      //     this.col = lineHovering.el.firstElementChild.textContent.length;
+      //   } else if (computedCol > 0) {
+      //     this.col = computedCol;
+      //   }
+      //   this.highlightedRegion = {
+      //     ...this.hovering,
+      //     endingLine: lineHovering,
+      //     endingCol: this.col,
+      //     isBackwards:
+      //       this.hovering.startingRow === computedRow
+      //         ? this.hovering.startingCol > this.col
+      //         : this.hovering.startingRow > computedRow,
+      //   };
+      //   this.updateCurrentLine(lineHovering, false);
+      // }
     });
 
     window.addEventListener("mouseup", (e: MouseEvent) => {
@@ -413,3 +386,8 @@ export class Cursor {
     document.removeEventListener("keydown", this.keydownEventListener);
   }
 }
+
+// this.editorEl.scrollTo({
+//   top: this.offsetFromTop * 16,
+//   behavior: "instant",
+// });

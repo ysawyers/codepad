@@ -1,7 +1,7 @@
 // TODO: To open files faster only create line element when requested not on immedietly opening the file.
 
 interface Line {
-  el: HTMLElement;
+  value: string;
   prev: Line | null;
   next: Line | null;
 }
@@ -14,14 +14,6 @@ interface Highlight {
   isBackwards: boolean;
 }
 
-function createLineEl(): HTMLElement {
-  const lineContainer = (
-    document.getElementById("line") as HTMLTemplateElement
-  ).content.firstElementChild.cloneNode(true) as HTMLElement;
-
-  return lineContainer;
-}
-
 export class FileMutationHandler {
   head: Line;
   size: number;
@@ -32,12 +24,12 @@ export class FileMutationHandler {
     this.head = {
       next: null,
       prev: null,
-      el: createLineEl(),
+      value: "",
     };
     if (fileText.length) this.head = null;
 
     let curr = this.head;
-    let buff = "";
+    let lineAnch = 0;
 
     for (let i = 0; i < fileText.length; i++) {
       const ch = fileText[i];
@@ -46,9 +38,8 @@ export class FileMutationHandler {
         const newLine: Line = {
           next: null,
           prev: curr,
-          el: createLineEl(),
+          value: fileText.slice(lineAnch, i),
         };
-        newLine.el.firstElementChild.textContent = buff;
 
         if (curr) {
           curr.next = newLine;
@@ -57,59 +48,59 @@ export class FileMutationHandler {
           this.head = newLine;
           curr = this.head;
         }
-        buff = "";
+        lineAnch = i + 1;
 
         this.size++;
-      } else {
-        buff += ch === " " ? "\xa0" : ch;
       }
     }
 
-    if (buff.length) {
-      const newLine: Line = {
-        next: null,
-        prev: curr,
-        el: createLineEl(),
-      };
-      newLine.el.firstElementChild.textContent = buff;
+    // TODO: Reimplement.
 
-      if (curr) {
-        curr.next = newLine;
-        curr = curr.next;
-      } else {
-        this.head = newLine;
-        curr = this.head;
-      }
-      this.size++;
+    // if (buff.length) {
+    //   const newLine: Line = {
+    //     next: null,
+    //     prev: curr,
+    //     value: buff,
+    //   };
+
+    //   if (curr) {
+    //     curr.next = newLine;
+    //     curr = curr.next;
+    //   } else {
+    //     this.head = newLine;
+    //     curr = this.head;
+    //   }
+
+    //   this.size++;
+    // }
+  }
+
+  getLineFromRow(row: number): Line | null {
+    let curr = this.head;
+    for (let i = 0; i < row; i++) {
+      if (!curr) return null;
+      curr = curr.next;
     }
+    return curr;
   }
 
   insertCharacter(line: Line, col: number, ch: string) {
-    let text = line.el.firstElementChild.textContent;
-    text = text.slice(0, col) + ch + text.slice(col);
-    line.el.firstElementChild.textContent = text;
+    line.value = line.value.slice(0, col) + ch + line.value.slice(col);
   }
 
   deleteCharacter(line: Line, col: number) {
-    let text = line.el.firstElementChild.textContent;
-    text = text.slice(0, col - 1) + text.slice(col);
-    line.el.firstElementChild.textContent = text;
+    line.value = line.value.slice(0, col - 1) + line.value.slice(col);
   }
 
   createNewLine(prevLine: Line, textOverflow: string) {
     const newLine: Line = {
       prev: prevLine,
       next: prevLine.next,
-      el: createLineEl(),
+      value: textOverflow,
     };
-    // assign overflow from previous line to new line
-    newLine.el.firstElementChild.textContent = textOverflow;
 
     if (prevLine?.next?.prev) prevLine.next.prev = newLine;
     prevLine.next = newLine;
-
-    // directly append new element after node on the DOM
-    prevLine.el.after(newLine.el);
 
     this.size++;
   }
@@ -122,52 +113,41 @@ export class FileMutationHandler {
       currLine.prev.next = null;
     }
 
-    // where the cursor will jump to on the previous line
-    const oldLength = currLine.prev.el.firstElementChild.textContent.length;
+    const newColPos = currLine.prev.value.length;
 
-    // append the contents of the line past the cursor to the previous line
-    currLine.prev.el.firstElementChild.textContent += textOverflow;
-
-    // directly remove the current line from the DOM
-    currLine.el.remove();
+    currLine.prev.value += textOverflow;
 
     this.size--;
 
-    return oldLength;
+    return newColPos;
   }
 
   batchRemove(range: Highlight) {
-    if (range.endingLine == range.startingLine) {
-      let oldText = range.startingLine.el.firstElementChild.textContent;
-
-      if (range.isBackwards) {
-        range.endingLine.el.firstElementChild.textContent =
-          oldText.slice(0, range.endingCol) + oldText.slice(range.startingCol);
-      } else {
-        range.startingLine.el.firstElementChild.textContent =
-          oldText.slice(0, range.startingCol) + oldText.slice(range.endingCol);
-      }
-      return;
-    }
-
-    if (range.isBackwards) {
-      const startingLineText = range.startingLine.el.firstElementChild.textContent;
-
-      const endingLineText = range.endingLine.el.firstElementChild.textContent;
-      range.endingLine.el.firstElementChild.textContent =
-        endingLineText.slice(0, range.endingCol) + startingLineText.slice(range.startingCol);
-
-      range.endingLine.next = range.startingLine.next;
-      range.startingLine.next.prev = range.endingLine;
-    } else {
-      const endingLineText = range.endingLine.el.firstElementChild.textContent;
-
-      const startingLineText = range.startingLine.el.firstElementChild.textContent;
-      range.startingLine.el.firstElementChild.textContent =
-        startingLineText.slice(0, range.startingCol) + endingLineText.slice(range.endingCol);
-
-      range.startingLine.next = range.endingLine.next;
-      range.endingLine.next.prev = range.startingLine;
-    }
+    // if (range.endingLine == range.startingLine) {
+    //   let oldText = range.startingLine.el.firstElementChild.textContent;
+    //   if (range.isBackwards) {
+    //     range.endingLine.el.firstElementChild.textContent =
+    //       oldText.slice(0, range.endingCol) + oldText.slice(range.startingCol);
+    //   } else {
+    //     range.startingLine.el.firstElementChild.textContent =
+    //       oldText.slice(0, range.startingCol) + oldText.slice(range.endingCol);
+    //   }
+    //   return;
+    // }
+    // if (range.isBackwards) {
+    //   const startingLineText = range.startingLine.el.firstElementChild.textContent;
+    //   const endingLineText = range.endingLine.el.firstElementChild.textContent;
+    //   range.endingLine.el.firstElementChild.textContent =
+    //     endingLineText.slice(0, range.endingCol) + startingLineText.slice(range.startingCol);
+    //   range.endingLine.next = range.startingLine.next;
+    //   range.startingLine.next.prev = range.endingLine;
+    // } else {
+    //   const endingLineText = range.endingLine.el.firstElementChild.textContent;
+    //   const startingLineText = range.startingLine.el.firstElementChild.textContent;
+    //   range.startingLine.el.firstElementChild.textContent =
+    //     startingLineText.slice(0, range.startingCol) + endingLineText.slice(range.endingCol);
+    //   range.startingLine.next = range.endingLine.next;
+    //   range.endingLine.next.prev = range.startingLine;
+    // }
   }
 }

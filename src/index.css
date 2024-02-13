@@ -128,11 +128,14 @@ body {
 }
 
 .line-container {
+  /* flex-grow: 1 */
   position: relative;
   background-color: #1b1c26;
   cursor: text;
   padding-bottom: 30em;
-  flex-grow: 1;
+
+  /* TODO: CHANGE EVENTUALLY */
+  width: 90%;
 }
 
 .line {
