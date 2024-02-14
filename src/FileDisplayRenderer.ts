@@ -3,8 +3,6 @@ import { throttledEventListener } from "./utils";
 
 const LINE_HEIGHT = 16;
 
-// train tracks, instead of re-rendering just use the absolute position to "move" around the DOM! lines on the bottom should stay the longest before being re-rendered FILO. Append the node that should be removed
-
 interface Line {
   prev: Line | null;
   next: Line | null;
@@ -25,23 +23,16 @@ interface Highlight {
   isBackwards: boolean;
 }
 
-function createHighlightEl() {
-  const highlightContainer = document.createElement("div");
-  highlightContainer.className = "highlight";
-  return highlightContainer;
-}
-
-export class Cursor {
+export class FileDisplayRenderer {
   private editorEl: HTMLElement;
+  private cursorEl: HTMLElement;
 
   private lineRenderingQueue: HTMLElement[];
   private lineCache: Map<HTMLElement, [number, Line]>;
 
-  // used to remember the region scoped
   private viewportHeight: number;
   private scrollOffsetFromTop: number;
 
-  private currentLine: Line;
   private row: number;
   private col: number;
   private colAnchor: number | null;
@@ -69,23 +60,22 @@ export class Cursor {
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
-    this.updateCurrentLine(this.file.head);
   }
 
   private navigateLeft() {
     this.highlightedRegion = null;
     this.colAnchor = null;
     this.col--;
-    this.updateCurrentLine(this.currentLine);
-    this.forceScrollToViewCursor();
+    // this.updateCurrentLine(this.currentLine);
+    // this.forceScrollToViewCursor();
   }
 
   private navigateRight() {
     this.highlightedRegion = null;
     this.colAnchor = null;
     this.col++;
-    this.updateCurrentLine(this.currentLine);
-    this.forceScrollToViewCursor();
+    // this.updateCurrentLine(this.currentLine);
+    // this.forceScrollToViewCursor();
   }
 
   private navigateUp() {
@@ -157,20 +147,25 @@ export class Cursor {
     // TODO
   }
 
-  private updateCurrentLine(currLine: Line, focused: boolean = true) {
-    // if (this.currentLine) {
-    //   this.currentLine.el.removeChild(this.currentLine.el.lastElementChild);
-    //   this.currentLine.el.style.backgroundColor = "";
-    // }
-    // const cursor = document.createElement("div");
-    // cursor.className = "cursor";
-    // cursor.style.left = `${this.col * 7.8}px`;
-    // currLine.el.appendChild(cursor);
-    // if (focused) currLine.el.style.backgroundColor = "rgba(219,221,223, 0.1)";
-    // this.currentLine = currLine;
+  private remapRenderingQueue() {
+    this.lineCache = new Map();
+
+    const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
+    let currLine = this.file.getLineFromRow(startingRow);
+
+    for (let i = 0; i < this.lineRenderingQueue.length; i++) {
+      this.lineCache.set(this.lineRenderingQueue[i], [startingRow + i, currLine]);
+      this.lineRenderingQueue[i].style.top = `${startingRow + i}em`;
+      this.lineRenderingQueue[i].firstElementChild.textContent = currLine.value;
+      currLine = currLine.next;
+    }
   }
 
   foreground() {
+    const cursor = document.createElement("div");
+    cursor.className = "cursor";
+    this.cursorEl = cursor;
+
     document.getElementById("workspace-group").appendChild(this.editorEl);
 
     const lineGroup = document.getElementById("line-group");
@@ -302,23 +297,16 @@ export class Cursor {
       const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
 
       if (shouldRemapQueue) {
-        this.lineCache = new Map();
-
-        const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
-        let currLine = this.file.getLineFromRow(startingRow);
-
-        for (let i = 0; i < this.lineRenderingQueue.length; i++) {
-          this.lineCache.set(this.lineRenderingQueue[i], [startingRow + i, currLine]);
-          this.lineRenderingQueue[i].style.top = `${startingRow + i}em`;
-          this.lineRenderingQueue[i].firstElementChild.textContent = currLine.value;
-          currLine = currLine.next;
-        }
+        this.remapRenderingQueue();
       } else if (isScrollingDown) {
         while (this.lineRenderingQueue[0].getBoundingClientRect().top < 0) {
-          const lineEl = this.lineRenderingQueue.shift();
-
           const lastLineRendered = this.lineRenderingQueue[this.lineRenderingQueue.length - 1];
           const [row, line] = this.lineCache.get(lastLineRendered);
+
+          // no more lines to render at the bottom
+          if (!line.next) break;
+
+          const lineEl = this.lineRenderingQueue.shift();
 
           lineEl.style.top = `${row + 1}em`;
           lineEl.firstElementChild.textContent = line.next.value;
@@ -332,10 +320,13 @@ export class Cursor {
           this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top >
           this.viewportHeight
         ) {
-          const lineEl = this.lineRenderingQueue.pop();
-
           const firstLineRendered = this.lineRenderingQueue[0];
           const [row, line] = this.lineCache.get(firstLineRendered);
+
+          // no more lines to render at the top
+          if (!line.prev) break;
+
+          const lineEl = this.lineRenderingQueue.pop();
 
           lineEl.style.top = `${row - 1}em`;
           lineEl.firstElementChild.textContent = line.prev.value;
@@ -344,6 +335,17 @@ export class Cursor {
 
           this.lineRenderingQueue.unshift(lineEl);
         }
+      }
+
+      const lineElWithFocus = this.lineRenderingQueue[this.row % this.lineRenderingQueue.length];
+      const [row, _] = this.lineCache.get(lineElWithFocus);
+
+      if (this.cursorEl.isConnected) this.cursorEl.remove();
+
+      // checks if cursor is within the current region scoped and if so it should be rendered
+      if (row === this.row) {
+        this.cursorEl.style.left = `${7.8 * this.col}px`;
+        lineElWithFocus.appendChild(this.cursorEl);
       }
     });
 

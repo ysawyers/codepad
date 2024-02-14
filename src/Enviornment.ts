@@ -1,6 +1,4 @@
-import { Cursor } from "./Cursor";
-
-// TODO: (PERFORMANCE) LAZY LOAD LINES
+import { FileDisplayRenderer } from "./FileDisplayRenderer";
 
 interface FileOrFolder {
   path: string | null;
@@ -98,12 +96,12 @@ export class Enviornment {
 
   landingEl: HTMLElement;
 
-  cursors: Map<HTMLElement, [Cursor, DirNode | null]>;
+  files: Map<HTMLElement, [FileDisplayRenderer, DirNode | null]>;
   foregroundedTab: HTMLElement | null;
   tabPrecedence: HTMLElement[];
 
   constructor() {
-    this.cursors = new Map<HTMLElement, [Cursor, DirNode]>();
+    this.files = new Map<HTMLElement, [FileDisplayRenderer, DirNode]>();
     this.tabPrecedence = [];
     this.foregroundedTab = null;
 
@@ -112,7 +110,7 @@ export class Enviornment {
       // @ts-ignore
       .content.firstElementChild.cloneNode(true);
 
-    if (!this.cursors.size) {
+    if (!this.files.size) {
       this.directory = null;
       this.initializeWelcomePage();
     }
@@ -174,24 +172,24 @@ export class Enviornment {
 
     document.getElementById("tab-group").appendChild(newForegroundedTab);
 
-    const tabCursor = new Cursor(0, 0, data);
-    this.cursors.set(newForegroundedTab, [tabCursor, dirNode]);
-    tabCursor.foreground();
+    const file = new FileDisplayRenderer(0, 0, data);
+    this.files.set(newForegroundedTab, [file, dirNode]);
+    file.foreground();
     this.tabPrecedence.push(newForegroundedTab);
   }
 
   switchTab(newForegroundedTab: HTMLElement) {
-    const [oldCursor, _] = this.cursors.get(this.foregroundedTab);
+    const [oldCursor, _] = this.files.get(this.foregroundedTab);
     oldCursor.background();
 
-    const [newCursor, newDirNode] = this.cursors.get(newForegroundedTab);
+    const [newCursor, newDirNode] = this.files.get(newForegroundedTab);
     newCursor.foreground();
 
     this.updateForegroundedTab(newDirNode, newForegroundedTab);
   }
 
   closeTab(existingTab: HTMLElement) {
-    const [oldCursor, oldDirNode] = this.cursors.get(existingTab);
+    const [oldCursor, oldDirNode] = this.files.get(existingTab);
     oldCursor.background();
 
     // have to copy the code here from the updateForeground function because of edge case:
@@ -208,7 +206,7 @@ export class Enviornment {
       oldDirNode.el.style.backgroundColor = "";
     }
 
-    this.cursors.delete(existingTab);
+    this.files.delete(existingTab);
 
     existingTab.remove();
 
@@ -217,8 +215,8 @@ export class Enviornment {
 
       while (this.tabPrecedence.length) {
         const tabFallback = this.tabPrecedence[this.tabPrecedence.length - 1];
-        if (this.cursors.has(tabFallback)) {
-          const [newCursor, newDirNode] = this.cursors.get(tabFallback);
+        if (this.files.has(tabFallback)) {
+          const [newCursor, newDirNode] = this.files.get(tabFallback);
           newCursor.foreground();
 
           this.updateForegroundedTab(newDirNode, tabFallback);
@@ -237,8 +235,8 @@ export class Enviornment {
       // @ts-ignore
       this.foregroundedTab.firstElementChild.style.fontWeight = "400";
 
-      const [prevTabCursor, oldDirNode] = this.cursors.get(this.foregroundedTab);
-      prevTabCursor.background();
+      const [file, oldDirNode] = this.files.get(this.foregroundedTab);
+      file.background();
 
       if (oldDirNode) {
         let curr = oldDirNode.parent;

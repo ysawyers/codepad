@@ -1,5 +1,3 @@
-// TODO: To open files faster only create line element when requested not on immedietly opening the file.
-
 interface Line {
   value: string;
   prev: Line | null;
@@ -54,25 +52,25 @@ export class FileMutationHandler {
       }
     }
 
-    // TODO: Reimplement.
+    const lastLine = fileText.slice(lineAnch);
 
-    // if (buff.length) {
-    //   const newLine: Line = {
-    //     next: null,
-    //     prev: curr,
-    //     value: buff,
-    //   };
+    if (lastLine.length) {
+      const newLine: Line = {
+        next: null,
+        prev: curr,
+        value: lastLine,
+      };
 
-    //   if (curr) {
-    //     curr.next = newLine;
-    //     curr = curr.next;
-    //   } else {
-    //     this.head = newLine;
-    //     curr = this.head;
-    //   }
+      if (curr) {
+        curr.next = newLine;
+        curr = curr.next;
+      } else {
+        this.head = newLine;
+        curr = this.head;
+      }
 
-    //   this.size++;
-    // }
+      this.size++;
+    }
   }
 
   getLineFromRow(row: number): Line | null {
