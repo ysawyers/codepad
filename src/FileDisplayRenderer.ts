@@ -162,11 +162,11 @@ export class FileDisplayRenderer {
   }
 
   foreground() {
+    document.getElementById("workspace-group").appendChild(this.editorEl);
+
     const cursor = document.createElement("div");
     cursor.className = "cursor";
     this.cursorEl = cursor;
-
-    document.getElementById("workspace-group").appendChild(this.editorEl);
 
     const lineGroup = document.getElementById("line-group");
 
@@ -194,6 +194,78 @@ export class FileDisplayRenderer {
       this.lineCache.set(lineContainer, [i, curr]);
       curr = curr.next;
     }
+
+    throttledEventListener(this.editorEl, "scroll", () => {
+      const isScrollingDown = this.editorEl.scrollTop > this.scrollOffsetFromTop;
+      this.scrollOffsetFromTop = this.editorEl.scrollTop;
+
+      const lastVisibleLinePos =
+        this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top;
+      const firstVisibleLinePos = this.lineRenderingQueue[0].getBoundingClientRect().top;
+
+      const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
+
+      if (shouldRemapQueue) {
+        this.remapRenderingQueue();
+      } else if (isScrollingDown) {
+        const distanceAwayFromViewport = 0 - firstVisibleLinePos;
+
+        if (distanceAwayFromViewport > 0) {
+          const numLinesToRecompute = Math.ceil(distanceAwayFromViewport / LINE_HEIGHT);
+
+          for (let i = 0; i < numLinesToRecompute; i++) {
+            const lastLineRendered = this.lineRenderingQueue[this.lineRenderingQueue.length - 1];
+            const [row, line] = this.lineCache.get(lastLineRendered);
+
+            // no more lines to render at the bottom
+            if (!line.next) break;
+
+            const lineEl = this.lineRenderingQueue.shift();
+
+            lineEl.style.top = `${row + 1}em`;
+            lineEl.firstElementChild.textContent = line.next.value;
+
+            this.lineCache.set(lineEl, [row + 1, line.next]);
+
+            this.lineRenderingQueue.push(lineEl);
+          }
+        }
+      } else {
+        const distanceAwayFromViewport = lastVisibleLinePos - this.viewportHeight;
+
+        if (distanceAwayFromViewport > 0) {
+          const numLinesToRecompute = Math.ceil(distanceAwayFromViewport / LINE_HEIGHT);
+
+          for (let i = 0; i < numLinesToRecompute; i++) {
+            const firstLineRendered = this.lineRenderingQueue[0];
+            const [row, line] = this.lineCache.get(firstLineRendered);
+
+            // no more lines to render at the top
+            if (!line.prev) break;
+
+            const lineEl = this.lineRenderingQueue.pop();
+
+            lineEl.style.top = `${row - 1}em`;
+            lineEl.firstElementChild.textContent = line.prev.value;
+
+            this.lineCache.set(lineEl, [row - 1, line.prev]);
+
+            this.lineRenderingQueue.unshift(lineEl);
+          }
+        }
+      }
+
+      // const lineElWithFocus = this.lineRenderingQueue[this.row % this.lineRenderingQueue.length];
+      // const [row, _] = this.lineCache.get(lineElWithFocus);
+
+      // if (this.cursorEl.isConnected) this.cursorEl.remove();
+
+      // // checks if cursor is within the current region scoped and if so it should be rendered
+      // if (row === this.row) {
+      //   this.cursorEl.style.left = `${7.8 * this.col}px`;
+      //   lineElWithFocus.appendChild(this.cursorEl);
+      // }
+    });
 
     this.keydownEventListener = (e: KeyboardEvent) => {
       // switch (e.key) {
@@ -286,68 +358,6 @@ export class FileDisplayRenderer {
       //   }
       // }
     };
-
-    throttledEventListener(this.editorEl, "scroll", () => {
-      const isScrollingDown = this.editorEl.scrollTop > this.scrollOffsetFromTop;
-      this.scrollOffsetFromTop = this.editorEl.scrollTop;
-
-      const lastVisibleLinePos =
-        this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top;
-      const firstVisibleLinePos = this.lineRenderingQueue[0].getBoundingClientRect().top;
-      const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
-
-      if (shouldRemapQueue) {
-        this.remapRenderingQueue();
-      } else if (isScrollingDown) {
-        while (this.lineRenderingQueue[0].getBoundingClientRect().top < 0) {
-          const lastLineRendered = this.lineRenderingQueue[this.lineRenderingQueue.length - 1];
-          const [row, line] = this.lineCache.get(lastLineRendered);
-
-          // no more lines to render at the bottom
-          if (!line.next) break;
-
-          const lineEl = this.lineRenderingQueue.shift();
-
-          lineEl.style.top = `${row + 1}em`;
-          lineEl.firstElementChild.textContent = line.next.value;
-
-          this.lineCache.set(lineEl, [row + 1, line.next]);
-
-          this.lineRenderingQueue.push(lineEl);
-        }
-      } else {
-        while (
-          this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top >
-          this.viewportHeight
-        ) {
-          const firstLineRendered = this.lineRenderingQueue[0];
-          const [row, line] = this.lineCache.get(firstLineRendered);
-
-          // no more lines to render at the top
-          if (!line.prev) break;
-
-          const lineEl = this.lineRenderingQueue.pop();
-
-          lineEl.style.top = `${row - 1}em`;
-          lineEl.firstElementChild.textContent = line.prev.value;
-
-          this.lineCache.set(lineEl, [row - 1, line.prev]);
-
-          this.lineRenderingQueue.unshift(lineEl);
-        }
-      }
-
-      const lineElWithFocus = this.lineRenderingQueue[this.row % this.lineRenderingQueue.length];
-      const [row, _] = this.lineCache.get(lineElWithFocus);
-
-      if (this.cursorEl.isConnected) this.cursorEl.remove();
-
-      // checks if cursor is within the current region scoped and if so it should be rendered
-      if (row === this.row) {
-        this.cursorEl.style.left = `${7.8 * this.col}px`;
-        lineElWithFocus.appendChild(this.cursorEl);
-      }
-    });
 
     // contained to line-group specifically, hovering will not be active anywhere else
     this.editorEl.lastElementChild.addEventListener("mousemove", (e: MouseEvent) => {
