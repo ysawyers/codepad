@@ -50,6 +50,7 @@ export class FileDisplayRenderer {
   private editorEl: HTMLElement;
 
   private cursor: {
+    lineEl: HTMLElement;
     el: HTMLElement;
     visibleOnDOM: boolean;
     line: Line;
@@ -98,6 +99,7 @@ export class FileDisplayRenderer {
       el: cursor,
       visibleOnDOM: false,
       line: this.file.head,
+      lineEl: null,
     };
   }
 
@@ -142,18 +144,21 @@ export class FileDisplayRenderer {
 
       this.cursor.line = this.cursor.line.prev;
 
-      const prevLineEl = this.cursor.el.parentElement.previousElementSibling;
+      const prevLineEl = this.cursor.el.parentElement.previousElementSibling as HTMLElement;
 
       let computedCol = this.colAnchor;
       if (this.colAnchor > this.cursor.line.value.length)
         computedCol = this.cursor.line.value.length;
 
+      this.col = computedCol;
+
       const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
-      updatedCursor.style.left = `${computedCol * 7.8}px`;
+      updatedCursor.style.left = `${this.col * 7.8}px`;
       this.cursor.el.remove();
 
       prevLineEl.appendChild(updatedCursor);
       this.cursor.el = updatedCursor;
+      this.cursor.lineEl = prevLineEl;
     }
   }
 
@@ -164,18 +169,33 @@ export class FileDisplayRenderer {
 
       this.cursor.line = this.cursor.line.next;
 
-      const nextLineEl = this.cursor.el.parentElement.nextElementSibling;
+      const nextLineEl = this.cursor.el.parentElement.nextElementSibling as HTMLElement;
 
       let computedCol = this.colAnchor;
       if (this.colAnchor > this.cursor.line.value.length)
         computedCol = this.cursor.line.value.length;
 
+      this.col = computedCol;
+
       const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
-      updatedCursor.style.left = `${computedCol * 7.8}px`;
+      updatedCursor.style.left = `${this.col * 7.8}px`;
       this.cursor.el.remove();
 
       nextLineEl.appendChild(updatedCursor);
       this.cursor.el = updatedCursor;
+      this.cursor.lineEl = nextLineEl;
+
+      const visibleLines =
+        (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
+
+      const [row, _] = this.lineCache.get(nextLineEl);
+
+      if (visibleLines - (row % visibleLines) < 5) {
+        this.editorEl.scrollTo({
+          top: this.scrollOffsetFromTop + 16,
+          behavior: "instant",
+        });
+      }
     }
   }
 
@@ -249,6 +269,23 @@ export class FileDisplayRenderer {
       textEl.className = "default-line-text";
       textEl.textContent = curr.value;
 
+      lineContainer.addEventListener("mousedown", () => {
+        const [row, line] = this.lineCache.get(lineContainer);
+
+        const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+        updatedCursor.style.left = `${0 * 7.8}px`;
+        this.cursor.el.remove();
+
+        this.row = row;
+        this.cursor = {
+          el: updatedCursor,
+          line,
+          visibleOnDOM: true,
+          lineEl: lineContainer,
+        };
+        lineContainer.appendChild(updatedCursor);
+      });
+
       lineContainer.appendChild(textEl);
 
       this.lineRenderingQueue.push(lineContainer);
@@ -257,6 +294,10 @@ export class FileDisplayRenderer {
       this.lineCache.set(lineContainer, [i, curr]);
       curr = curr.next;
     }
+
+    lineGroup.firstElementChild.appendChild(this.cursor.el);
+    this.cursor.visibleOnDOM = true;
+    this.cursor.lineEl = lineGroup.firstElementChild as HTMLElement;
 
     const cleanup = throttledEventListener(this.editorEl, "scroll", () => {
       const newScrollOffset = this.editorEl.scrollTop;
@@ -321,16 +362,15 @@ export class FileDisplayRenderer {
         }
       }
 
-      const lineEl = this.lineRenderingQueue[this.row % this.lineRenderingQueue.length];
-      const [row, _] = this.lineCache.get(lineEl);
+      const firstVisibleRow = Math.floor(this.scrollOffsetFromTop / 16);
 
-      if (row === this.row) {
+      if (this.row >= firstVisibleRow && this.row <= firstVisibleRow + visibleLines) {
         if (!this.cursor.visibleOnDOM) {
           this.cursor.el.style.left = `${7.8 * this.col}px`;
-          lineEl.appendChild(this.cursor.el);
+          this.cursor.lineEl.append(this.cursor.el);
           this.cursor.visibleOnDOM = true;
         }
-      } else {
+      } else if (this.cursor.visibleOnDOM) {
         this.cursor.el.remove();
         this.cursor.visibleOnDOM = false;
       }
@@ -357,28 +397,6 @@ export class FileDisplayRenderer {
 
         case "Backspace":
           {
-            // if (this.deleteHighlightedRegion()) break;
-            // if (this.col != 0) {
-            //   const text = this.currentLine.el.firstElementChild.textContent;
-            //   const tab = "\xa0\xa0\xa0\xa0";
-            //   if (this.col > 3 && text.slice(this.col - 4, this.col) === tab) {
-            //     for (let i = 0; i < 4; i++) {
-            //       this.file.deleteCharacter(this.currentLine, this.col);
-            //       this.navigateLeft();
-            //     }
-            //   } else {
-            //     this.file.deleteCharacter(this.currentLine, this.col);
-            //     this.navigateLeft();
-            //   }
-            // } else if (this.row > 0) {
-            //   const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
-            //     this.col
-            //   );
-            //   this.lineCache = new Map();
-            //   this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
-            //   this.navigateUp();
-            // }
-
             if (this.col > 0) {
               this.file.deleteCharacter(this.cursor.line, this.col);
               this.cursor.el.previousElementSibling.textContent = this.cursor.line.value;
@@ -409,11 +427,10 @@ export class FileDisplayRenderer {
           this.navigateDown();
           break;
 
-        default: {
+        default:
           this.file.insertCharacter(this.cursor.line, this.col, e.key);
           this.cursor.el.previousElementSibling.textContent = this.cursor.line.value;
           this.navigateRight();
-        }
       }
     };
 
@@ -457,8 +474,3 @@ export class FileDisplayRenderer {
     this.throttledScrollEventListenerCleanup();
   }
 }
-
-// this.editorEl.scrollTo({
-//   top: this.offsetFromTop * 16,
-//   behavior: "instant",
-// });
