@@ -25,7 +25,10 @@ interface Highlight {
 
 export class FileDisplayRenderer {
   private editorEl: HTMLElement;
-  private cursorEl: HTMLElement;
+  private cursor: {
+    el: HTMLElement;
+    visibleOnDOM: boolean;
+  };
 
   private lineRenderingQueue: HTMLElement[];
   private lineCache: Map<HTMLElement, [number, Line]>;
@@ -60,6 +63,14 @@ export class FileDisplayRenderer {
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
+
+    const cursor = document.createElement("div");
+    cursor.className = "cursor";
+
+    this.cursor = {
+      el: cursor,
+      visibleOnDOM: false,
+    };
   }
 
   private navigateLeft() {
@@ -164,12 +175,7 @@ export class FileDisplayRenderer {
   foreground() {
     document.getElementById("workspace-group").appendChild(this.editorEl);
 
-    const cursor = document.createElement("div");
-    cursor.className = "cursor";
-    this.cursorEl = cursor;
-
     const lineGroup = document.getElementById("line-group");
-
     lineGroup.style.height = `${this.file.size}em`;
 
     const initialQueueSize =
@@ -196,8 +202,10 @@ export class FileDisplayRenderer {
     }
 
     throttledEventListener(this.editorEl, "scroll", () => {
-      const isScrollingDown = this.editorEl.scrollTop > this.scrollOffsetFromTop;
-      this.scrollOffsetFromTop = this.editorEl.scrollTop;
+      const newScrollOffset = this.editorEl.scrollTop;
+
+      const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
+      this.scrollOffsetFromTop = newScrollOffset;
 
       const lastVisibleLinePos =
         this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top;
@@ -206,6 +214,7 @@ export class FileDisplayRenderer {
       const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
 
       if (shouldRemapQueue) {
+        // EXPENSIVE: is there a better way of doing this?
         this.remapRenderingQueue();
       } else if (isScrollingDown) {
         const distanceAwayFromViewport = 0 - firstVisibleLinePos;
@@ -255,16 +264,19 @@ export class FileDisplayRenderer {
         }
       }
 
-      // const lineElWithFocus = this.lineRenderingQueue[this.row % this.lineRenderingQueue.length];
-      // const [row, _] = this.lineCache.get(lineElWithFocus);
+      const lineEl = this.lineRenderingQueue[this.row % this.lineRenderingQueue.length];
+      const [row, _] = this.lineCache.get(lineEl);
 
-      // if (this.cursorEl.isConnected) this.cursorEl.remove();
-
-      // // checks if cursor is within the current region scoped and if so it should be rendered
-      // if (row === this.row) {
-      //   this.cursorEl.style.left = `${7.8 * this.col}px`;
-      //   lineElWithFocus.appendChild(this.cursorEl);
-      // }
+      if (row === this.row) {
+        if (!this.cursor.visibleOnDOM) {
+          this.cursor.el.style.left = `${7.8 * this.col}px`;
+          lineEl.appendChild(this.cursor.el);
+          this.cursor.visibleOnDOM = true;
+        }
+      } else {
+        this.cursor.el.remove();
+        this.cursor.visibleOnDOM = false;
+      }
     });
 
     this.keydownEventListener = (e: KeyboardEvent) => {
