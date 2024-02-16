@@ -1,5 +1,6 @@
 import { FileMutationHandler } from "./FileMutationHandler";
-import { throttledEventListener } from "./utils";
+
+// REFACTOR IDEA: Everytime this.col is updated, this.colAnchor has to be set accoringly. Make update function instead?
 
 const LINE_HEIGHT = 16;
 
@@ -23,11 +24,35 @@ interface Highlight {
   isBackwards: boolean;
 }
 
+function throttledEventListener(
+  el: HTMLElement,
+  ev: keyof DocumentEventMap,
+  cb: (e: Event) => void
+) {
+  let waiting = false;
+
+  const f = (e: Event) => {
+    if (waiting) return;
+    waiting = true;
+
+    requestAnimationFrame(() => {
+      cb(e);
+      waiting = false;
+    });
+  };
+
+  el.addEventListener(ev, f);
+
+  return () => el.removeEventListener(ev, f);
+}
+
 export class FileDisplayRenderer {
   private editorEl: HTMLElement;
+
   private cursor: {
     el: HTMLElement;
     visibleOnDOM: boolean;
+    line: Line;
   };
 
   private lineRenderingQueue: HTMLElement[];
@@ -38,10 +63,12 @@ export class FileDisplayRenderer {
 
   private row: number;
   private col: number;
-  private colAnchor: number | null;
+  private colAnchor: number;
 
   private file: FileMutationHandler;
+
   private keydownEventListener: (e: KeyboardEvent) => void;
+  private throttledScrollEventListenerCleanup: () => void;
 
   private hovering: Hover | null;
   private highlightedRegion: Highlight | null;
@@ -51,13 +78,13 @@ export class FileDisplayRenderer {
     this.scrollOffsetFromTop = 0;
     this.row = row;
     this.col = col;
+    this.colAnchor = this.col;
 
     this.lineRenderingQueue = [];
     this.lineCache = new Map();
 
     this.hovering = null;
     this.highlightedRegion = null;
-    this.colAnchor = null;
 
     this.file = new FileMutationHandler(fileText);
 
@@ -70,55 +97,86 @@ export class FileDisplayRenderer {
     this.cursor = {
       el: cursor,
       visibleOnDOM: false,
+      line: this.file.head,
     };
   }
 
   private navigateLeft() {
-    this.highlightedRegion = null;
-    this.colAnchor = null;
-    this.col--;
-    // this.updateCurrentLine(this.currentLine);
-    // this.forceScrollToViewCursor();
+    const newCol = this.col - 1;
+    if (newCol >= 0) {
+      this.highlightedRegion = null;
+      this.col = newCol;
+    } else {
+      this.col = this.cursor.line.prev.value.length;
+      this.navigateUp();
+    }
+    this.colAnchor = this.col;
+
+    const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+    updatedCursor.style.left = `${this.col * 7.8}px`;
+    this.cursor.el.replaceWith(updatedCursor);
+    this.cursor.el = updatedCursor;
   }
 
   private navigateRight() {
-    this.highlightedRegion = null;
-    this.colAnchor = null;
-    this.col++;
-    // this.updateCurrentLine(this.currentLine);
-    // this.forceScrollToViewCursor();
+    const newCol = this.col + 1;
+    if (newCol <= this.cursor.line.value.length) {
+      this.highlightedRegion = null;
+      this.col = newCol;
+    } else {
+      this.col = 0;
+      this.navigateDown();
+    }
+    this.colAnchor = this.col;
+
+    const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+    updatedCursor.style.left = `${this.col * 7.8}px`;
+    this.cursor.el.replaceWith(updatedCursor);
+    this.cursor.el = updatedCursor;
   }
 
   private navigateUp() {
-    // this.highlightedRegion = null;
-    // this.row--;
-    // if (!this.colAnchor) this.colAnchor = this.col;
-    // if (this.currentLine.prev) {
-    //   const textLength = this.currentLine.prev.el.firstElementChild.textContent.length;
-    //   if (this.colAnchor > textLength) {
-    //     this.col = textLength;
-    //   } else {
-    //     this.col = this.colAnchor;
-    //   }
-    //   this.updateCurrentLine(this.currentLine.prev);
-    // }
-    // this.forceScrollToViewCursor();
+    if (this.cursor.line.prev) {
+      this.highlightedRegion = null;
+      this.row--;
+
+      this.cursor.line = this.cursor.line.prev;
+
+      const prevLineEl = this.cursor.el.parentElement.previousElementSibling;
+
+      let computedCol = this.colAnchor;
+      if (this.colAnchor > this.cursor.line.value.length)
+        computedCol = this.cursor.line.value.length;
+
+      const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+      updatedCursor.style.left = `${computedCol * 7.8}px`;
+      this.cursor.el.remove();
+
+      prevLineEl.appendChild(updatedCursor);
+      this.cursor.el = updatedCursor;
+    }
   }
 
   private navigateDown() {
-    // this.highlightedRegion = null;
-    // this.row++;
-    // if (!this.colAnchor) this.colAnchor = this.col;
-    // if (this.currentLine.next) {
-    //   const textLength = this.currentLine.next.el.firstElementChild.textContent.length;
-    //   if (this.colAnchor > textLength) {
-    //     this.col = textLength;
-    //   } else {
-    //     this.col = this.colAnchor;
-    //   }
-    //   this.updateCurrentLine(this.currentLine.next);
-    // }
-    // this.forceScrollToViewCursor();
+    if (this.cursor.line.next) {
+      this.highlightedRegion = null;
+      this.row++;
+
+      this.cursor.line = this.cursor.line.next;
+
+      const nextLineEl = this.cursor.el.parentElement.nextElementSibling;
+
+      let computedCol = this.colAnchor;
+      if (this.colAnchor > this.cursor.line.value.length)
+        computedCol = this.cursor.line.value.length;
+
+      const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+      updatedCursor.style.left = `${computedCol * 7.8}px`;
+      this.cursor.el.remove();
+
+      nextLineEl.appendChild(updatedCursor);
+      this.cursor.el = updatedCursor;
+    }
   }
 
   private forceScrollToViewCursor() {
@@ -178,12 +236,11 @@ export class FileDisplayRenderer {
     const lineGroup = document.getElementById("line-group");
     lineGroup.style.height = `${this.file.size}em`;
 
-    const initialQueueSize =
-      (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
+    const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
 
     let curr = this.file.head;
 
-    for (let i = 0; i < initialQueueSize; i++) {
+    for (let i = 0; i < visibleLines; i++) {
       const lineContainer = document.createElement("div");
       lineContainer.className = "line";
       lineContainer.style.top = `${i}em`;
@@ -201,7 +258,7 @@ export class FileDisplayRenderer {
       curr = curr.next;
     }
 
-    throttledEventListener(this.editorEl, "scroll", () => {
+    const cleanup = throttledEventListener(this.editorEl, "scroll", () => {
       const newScrollOffset = this.editorEl.scrollTop;
 
       const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
@@ -214,7 +271,7 @@ export class FileDisplayRenderer {
       const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
 
       if (shouldRemapQueue) {
-        // EXPENSIVE: is there a better way of doing this?
+        // TODO: Expensive here. Is there a better way of doing this?
         this.remapRenderingQueue();
       } else if (isScrollingDown) {
         const distanceAwayFromViewport = 0 - firstVisibleLinePos;
@@ -278,97 +335,86 @@ export class FileDisplayRenderer {
         this.cursor.visibleOnDOM = false;
       }
     });
+    this.throttledScrollEventListenerCleanup = cleanup;
 
     this.keydownEventListener = (e: KeyboardEvent) => {
-      // switch (e.key) {
-      //   case "ArrowUp":
-      //     if (this.row > 0) this.navigateUp();
-      //     break;
-      //   case "ArrowDown":
-      //     const linesGroupEl = document.getElementById("line-group");
-      //     if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) this.navigateDown();
-      //     break;
-      //   case "ArrowLeft":
-      //     if (this.col > 0) {
-      //       this.navigateLeft();
-      //     } else if (this.row > 0) {
-      //       this.col = this.currentLine.prev.el.textContent.length;
-      //       this.navigateUp();
-      //     }
-      //     break;
-      //   case "ArrowRight":
-      //     {
-      //       const linesGroupEl = document.getElementById("line-group");
-      //       const text = this.currentLine.el.firstElementChild.textContent;
-      //       if (this.col < text.length) {
-      //         this.navigateRight();
-      //       } else if (!this.currentLine.el.isSameNode(linesGroupEl.lastElementChild)) {
-      //         this.col = 0;
-      //         this.navigateDown();
-      //       }
-      //     }
-      //     break;
-      //   case "Tab":
-      //     {
-      //       if (this.highlightedRegion) {
-      //         // TODO: apply tab to all highlighted rows
-      //       }
-      //       for (let i = 0; i < 4; i++) {
-      //         this.file.insertCharacter(this.currentLine, this.col, "\xa0");
-      //         this.navigateRight();
-      //       }
-      //     }
-      //     break;
-      //   case "Backspace":
-      //     {
-      //       if (this.deleteHighlightedRegion()) break;
-      //       if (this.col != 0) {
-      //         const text = this.currentLine.el.firstElementChild.textContent;
-      //         const tab = "\xa0\xa0\xa0\xa0";
-      //         if (this.col > 3 && text.slice(this.col - 4, this.col) === tab) {
-      //           for (let i = 0; i < 4; i++) {
-      //             this.file.deleteCharacter(this.currentLine, this.col);
-      //             this.navigateLeft();
-      //           }
-      //         } else {
-      //           this.file.deleteCharacter(this.currentLine, this.col);
-      //           this.navigateLeft();
-      //         }
-      //       } else if (this.row > 0) {
-      //         const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
-      //           this.col
-      //         );
-      //         this.lineCache = new Map();
-      //         this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
-      //         this.colAnchor = null;
-      //         this.navigateUp();
-      //       }
-      //     }
-      //     break;
-      //   case "Shift":
-      //     break;
-      //   case "Meta":
-      //     break;
-      //   case "Enter":
-      //     {
-      //       this.deleteHighlightedRegion();
-      //       const textContent = this.currentLine.el.firstElementChild.textContent;
-      //       this.currentLine.el.firstElementChild.textContent = textContent.slice(0, this.col);
-      //       this.file.createNewLine(this.currentLine, textContent.slice(this.col));
-      //       this.col = 0;
-      //       // clear cache before rerendering lines since lines are now reordered
-      //       this.lineCache = new Map();
-      //       this.colAnchor = null;
-      //       this.navigateDown();
-      //     }
-      //     break;
-      //   default: {
-      //     this.deleteHighlightedRegion();
-      //     const ch = e.key === " " ? "\xa0" : e.key;
-      //     this.file.insertCharacter(this.currentLine, this.col, ch);
-      //     this.navigateRight();
-      //   }
-      // }
+      switch (e.key) {
+        case "ArrowUp":
+          this.navigateUp();
+          break;
+
+        case "ArrowDown":
+          this.navigateDown();
+          break;
+
+        case "ArrowLeft":
+          this.navigateLeft();
+          break;
+
+        case "ArrowRight":
+          this.navigateRight();
+          break;
+
+        case "Backspace":
+          {
+            // if (this.deleteHighlightedRegion()) break;
+            // if (this.col != 0) {
+            //   const text = this.currentLine.el.firstElementChild.textContent;
+            //   const tab = "\xa0\xa0\xa0\xa0";
+            //   if (this.col > 3 && text.slice(this.col - 4, this.col) === tab) {
+            //     for (let i = 0; i < 4; i++) {
+            //       this.file.deleteCharacter(this.currentLine, this.col);
+            //       this.navigateLeft();
+            //     }
+            //   } else {
+            //     this.file.deleteCharacter(this.currentLine, this.col);
+            //     this.navigateLeft();
+            //   }
+            // } else if (this.row > 0) {
+            //   const textOverflow = this.currentLine.el.firstElementChild.textContent.slice(
+            //     this.col
+            //   );
+            //   this.lineCache = new Map();
+            //   this.col = this.file.removeCurrentLine(this.currentLine, textOverflow);
+            //   this.navigateUp();
+            // }
+
+            if (this.col > 0) {
+              this.file.deleteCharacter(this.cursor.line, this.col);
+              this.cursor.el.previousElementSibling.textContent = this.cursor.line.value;
+              this.navigateLeft();
+            } else {
+              const snapTo = this.file.removeCurrentLine(this.cursor.line);
+              this.remapRenderingQueue();
+
+              this.col = snapTo;
+              this.colAnchor = this.col;
+              this.navigateUp();
+            }
+          }
+          break;
+
+        case "Shift":
+          break;
+
+        case "Meta":
+          break;
+
+        case "Enter":
+          this.file.createNewLine(this.cursor.line, this.col);
+          this.remapRenderingQueue();
+
+          this.col = 0;
+          this.colAnchor = this.col;
+          this.navigateDown();
+          break;
+
+        default: {
+          this.file.insertCharacter(this.cursor.line, this.col, e.key);
+          this.cursor.el.previousElementSibling.textContent = this.cursor.line.value;
+          this.navigateRight();
+        }
+      }
     };
 
     // contained to line-group specifically, hovering will not be active anywhere else
@@ -408,6 +454,7 @@ export class FileDisplayRenderer {
   background() {
     this.editorEl.remove();
     document.removeEventListener("keydown", this.keydownEventListener);
+    this.throttledScrollEventListenerCleanup();
   }
 }
 

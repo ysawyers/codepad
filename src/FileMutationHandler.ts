@@ -90,12 +90,14 @@ export class FileMutationHandler {
     line.value = line.value.slice(0, col - 1) + line.value.slice(col);
   }
 
-  createNewLine(prevLine: Line, textOverflow: string) {
+  createNewLine(prevLine: Line, breakpoint: number) {
     const newLine: Line = {
       prev: prevLine,
       next: prevLine.next,
-      value: textOverflow,
+      value: prevLine.value.slice(breakpoint),
     };
+
+    prevLine.value = prevLine.value.slice(0, breakpoint);
 
     if (prevLine?.next?.prev) prevLine.next.prev = newLine;
     prevLine.next = newLine;
@@ -103,7 +105,7 @@ export class FileMutationHandler {
     this.size++;
   }
 
-  removeCurrentLine(currLine: Line, textOverflow: string): number {
+  removeCurrentLine(currLine: Line): number {
     if (currLine.next) {
       currLine.next.prev = currLine.prev;
       currLine.prev.next = currLine.next;
@@ -113,7 +115,7 @@ export class FileMutationHandler {
 
     const newColPos = currLine.prev.value.length;
 
-    currLine.prev.value += textOverflow;
+    currLine.prev.value += currLine.value;
 
     this.size--;
 
