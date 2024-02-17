@@ -134,7 +134,7 @@ body {
   cursor: text;
   padding-bottom: 30em;
 
-  /* TODO: CHANGE EVENTUALLY */
+  /* TODO: CHANGE EVENTUALLY (im trying to figure out how to get scroll in the x axis to work) */
   width: 90%;
 }
 

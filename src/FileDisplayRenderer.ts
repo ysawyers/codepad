@@ -1,27 +1,11 @@
 import { FileMutationHandler } from "./FileMutationHandler";
 
-// REFACTOR IDEA: Everytime this.col is updated, this.colAnchor has to be set accoringly. Make update function instead?
-
 const LINE_HEIGHT = 16;
 
 interface Line {
   prev: Line | null;
   next: Line | null;
   value: string;
-}
-
-interface Hover {
-  startingLine: Line;
-  startingCol: number;
-  startingRow: number;
-}
-
-interface Highlight {
-  startingLine: Line;
-  startingCol: number;
-  endingLine: Line;
-  endingCol: number;
-  isBackwards: boolean;
 }
 
 function throttledEventListener(
@@ -51,7 +35,7 @@ export class FileDisplayRenderer {
 
   private cursor: {
     lineEl: HTMLElement;
-    el: HTMLElement;
+    cursorEl: HTMLElement;
     visibleOnDOM: boolean;
     line: Line;
   };
@@ -71,9 +55,6 @@ export class FileDisplayRenderer {
   private keydownEventListener: (e: KeyboardEvent) => void;
   private throttledScrollEventListenerCleanup: () => void;
 
-  private hovering: Hover | null;
-  private highlightedRegion: Highlight | null;
-
   constructor(row: number, col: number, fileText: string) {
     this.viewportHeight = window.innerHeight;
     this.scrollOffsetFromTop = 0;
@@ -84,9 +65,6 @@ export class FileDisplayRenderer {
     this.lineRenderingQueue = [];
     this.lineCache = new Map();
 
-    this.hovering = null;
-    this.highlightedRegion = null;
-
     this.file = new FileMutationHandler(fileText);
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
@@ -96,50 +74,50 @@ export class FileDisplayRenderer {
     cursor.className = "cursor";
 
     this.cursor = {
-      el: cursor,
+      lineEl: null,
+      cursorEl: cursor,
       visibleOnDOM: false,
       line: this.file.head,
-      lineEl: null,
     };
+  }
+
+  private updateColWithAnchor(col: number) {
+    this.col = col;
+    this.colAnchor = this.col;
   }
 
   private navigateLeft() {
     const newCol = this.col - 1;
     if (newCol >= 0) {
-      this.highlightedRegion = null;
-      this.col = newCol;
+      this.updateColWithAnchor(newCol);
     } else {
-      this.col = this.cursor.line.prev.value.length;
+      this.updateColWithAnchor(this.cursor.line.prev.value.length);
       this.navigateUp();
     }
-    this.colAnchor = this.col;
 
-    const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+    const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
     updatedCursor.style.left = `${this.col * 7.8}px`;
-    this.cursor.el.replaceWith(updatedCursor);
-    this.cursor.el = updatedCursor;
+    this.cursor.cursorEl.replaceWith(updatedCursor);
+    this.cursor.cursorEl = updatedCursor;
   }
 
   private navigateRight() {
     const newCol = this.col + 1;
     if (newCol <= this.cursor.line.value.length) {
-      this.highlightedRegion = null;
-      this.col = newCol;
+      this.updateColWithAnchor(newCol);
     } else {
-      this.col = 0;
+      this.updateColWithAnchor(0);
       this.navigateDown();
     }
-    this.colAnchor = this.col;
 
-    const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+    const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
     updatedCursor.style.left = `${this.col * 7.8}px`;
-    this.cursor.el.replaceWith(updatedCursor);
-    this.cursor.el = updatedCursor;
+    this.cursor.cursorEl.replaceWith(updatedCursor);
+    this.cursor.cursorEl = updatedCursor;
   }
 
   private navigateUp() {
     if (this.cursor.line.prev) {
-      this.highlightedRegion = null;
       this.row--;
 
       this.cursor.line = this.cursor.line.prev;
@@ -158,19 +136,18 @@ export class FileDisplayRenderer {
 
       this.col = computedCol;
 
-      const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+      const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
       updatedCursor.style.left = `${this.col * 7.8}px`;
-      this.cursor.el.remove();
+      this.cursor.cursorEl.remove();
 
       prevLineEl.appendChild(updatedCursor);
-      this.cursor.el = updatedCursor;
+      this.cursor.cursorEl = updatedCursor;
       this.cursor.lineEl = prevLineEl;
     }
   }
 
   private navigateDown() {
     if (this.cursor.line.next) {
-      this.highlightedRegion = null;
       this.row++;
 
       this.cursor.line = this.cursor.line.next;
@@ -189,15 +166,15 @@ export class FileDisplayRenderer {
 
       this.col = computedCol;
 
-      const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
+      const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
       updatedCursor.style.left = `${this.col * 7.8}px`;
-      this.cursor.el.remove();
+      this.cursor.cursorEl.remove();
 
       nextLineEl.appendChild(updatedCursor);
-      this.cursor.el = updatedCursor;
+      this.cursor.cursorEl = updatedCursor;
       this.cursor.lineEl = nextLineEl;
 
-      const cursorDistanceFromTop = this.cursor.el.getBoundingClientRect().top;
+      const cursorDistanceFromTop = this.cursor.cursorEl.getBoundingClientRect().top;
       if (this.viewportHeight - LINE_HEIGHT * 2 < cursorDistanceFromTop) {
         this.editorEl.scrollTo({
           top:
@@ -209,44 +186,8 @@ export class FileDisplayRenderer {
     }
   }
 
-  private forceScrollToViewCursor() {
-    // if (!this.currentLine.el.isConnected) {
-    //   let offsetFromTop = 0;
-    //   let curr = this.currentLine;
-    //   while (curr) {
-    //     offsetFromTop++;
-    //     curr = curr.prev;
-    //   }
-    //   this.editorEl.scrollTo({
-    //     top: offsetFromTop * 16 - 16,
-    //     behavior: "instant",
-    //   });
-    // }
-  }
-
-  // returns true if deletion was successful
-  private deleteHighlightedRegion() {
-    // if (this.highlightedRegion) {
-    //   this.lineCache = new Map();
-    //   this.file.batchRemove(this.highlightedRegion);
-    //   if (this.highlightedRegion.isBackwards) {
-    //     this.col = this.highlightedRegion.endingCol;
-    //     this.updateCurrentLine(this.highlightedRegion.endingLine);
-    //   } else {
-    //     this.col = this.highlightedRegion.startingCol;
-    //     this.updateCurrentLine(this.highlightedRegion.startingLine);
-    //   }
-    //   this.highlightedRegion = null;
-    //   return true;
-    // }
-    // return false;
-  }
-
-  private updateHighlightedRegion() {
-    // TODO
-  }
-
-  private remapRenderingQueue() {
+  // For any drastic changes that needs a total repaint for the scoped region
+  private flushRenderingQueueAndRemount() {
     this.lineCache = new Map();
 
     const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
@@ -256,6 +197,13 @@ export class FileDisplayRenderer {
       this.lineCache.set(this.lineRenderingQueue[i], [startingRow + i, currLine]);
       this.lineRenderingQueue[i].style.top = `${startingRow + i}em`;
       this.lineRenderingQueue[i].firstElementChild.textContent = currLine.value;
+
+      if (this.row === startingRow + i) {
+        this.cursor.cursorEl.remove();
+        this.lineRenderingQueue[i].appendChild(this.cursor.cursorEl);
+        this.cursor.lineEl = this.lineRenderingQueue[i];
+      }
+
       currLine = currLine.next;
     }
   }
@@ -279,16 +227,26 @@ export class FileDisplayRenderer {
       textEl.className = "default-line-text";
       textEl.textContent = curr.value;
 
-      lineContainer.addEventListener("mousedown", () => {
+      lineContainer.addEventListener("mousedown", (e) => {
         const [row, line] = this.lineCache.get(lineContainer);
 
-        const updatedCursor = this.cursor.el.cloneNode(true) as HTMLDivElement;
-        updatedCursor.style.left = `${0 * 7.8}px`;
-        this.cursor.el.remove();
+        const distanceFromLeft =
+          e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
+
+        let col = Math.round(distanceFromLeft / 7.8);
+        if (col > lineContainer.firstElementChild.textContent.length) {
+          col = lineContainer.firstElementChild.textContent.length;
+        }
 
         this.row = row;
+        this.updateColWithAnchor(col);
+
+        const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
+        updatedCursor.style.left = `${this.col * 7.8}px`;
+        this.cursor.cursorEl.remove();
+
         this.cursor = {
-          el: updatedCursor,
+          cursorEl: updatedCursor,
           line,
           visibleOnDOM: true,
           lineEl: lineContainer,
@@ -305,7 +263,7 @@ export class FileDisplayRenderer {
       curr = curr.next;
     }
 
-    lineGroup.firstElementChild.appendChild(this.cursor.el);
+    lineGroup.firstElementChild.appendChild(this.cursor.cursorEl);
     this.cursor.visibleOnDOM = true;
     this.cursor.lineEl = lineGroup.firstElementChild as HTMLElement;
 
@@ -315,15 +273,16 @@ export class FileDisplayRenderer {
       const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
       this.scrollOffsetFromTop = newScrollOffset;
 
+      // TODO: Compute this myself.
+      const firstVisibleLinePos = this.lineRenderingQueue[0].getBoundingClientRect().top;
       const lastVisibleLinePos =
         this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top;
-      const firstVisibleLinePos = this.lineRenderingQueue[0].getBoundingClientRect().top;
 
-      const shouldRemapQueue = lastVisibleLinePos < 0 || firstVisibleLinePos > this.viewportHeight;
+      // OOB: Out of bounds
+      const isEntireRegionOOB = firstVisibleLinePos > this.viewportHeight || lastVisibleLinePos < 0;
 
-      if (shouldRemapQueue) {
-        // TODO: Expensive here. Is there a better way of doing this?
-        this.remapRenderingQueue();
+      if (isEntireRegionOOB) {
+        this.flushRenderingQueueAndRemount();
       } else if (isScrollingDown) {
         const distanceAwayFromViewport = 0 - firstVisibleLinePos;
 
@@ -376,12 +335,12 @@ export class FileDisplayRenderer {
 
       if (this.row >= firstVisibleRow && this.row <= firstVisibleRow + visibleLines) {
         if (!this.cursor.visibleOnDOM) {
-          this.cursor.el.style.left = `${7.8 * this.col}px`;
-          this.cursor.lineEl.append(this.cursor.el);
+          this.cursor.cursorEl.style.left = `${7.8 * this.col}px`;
+          this.cursor.lineEl.append(this.cursor.cursorEl);
           this.cursor.visibleOnDOM = true;
         }
       } else if (this.cursor.visibleOnDOM) {
-        this.cursor.el.remove();
+        this.cursor.cursorEl.remove();
         this.cursor.visibleOnDOM = false;
       }
     });
@@ -409,14 +368,12 @@ export class FileDisplayRenderer {
           {
             if (this.col > 0) {
               this.file.deleteCharacter(this.cursor.line, this.col);
-              this.cursor.el.previousElementSibling.textContent = this.cursor.line.value;
+              this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
               this.navigateLeft();
             } else {
               const snapTo = this.file.removeCurrentLine(this.cursor.line);
-              this.remapRenderingQueue();
-
-              this.col = snapTo;
-              this.colAnchor = this.col;
+              this.flushRenderingQueueAndRemount();
+              this.updateColWithAnchor(snapTo);
               this.navigateUp();
             }
           }
@@ -430,54 +387,21 @@ export class FileDisplayRenderer {
 
         case "Enter":
           this.file.createNewLine(this.cursor.line, this.col);
-          this.remapRenderingQueue();
-
-          this.col = 0;
-          this.colAnchor = this.col;
+          this.flushRenderingQueueAndRemount();
+          this.updateColWithAnchor(0);
           this.navigateDown();
           break;
 
         default:
           this.file.insertCharacter(this.cursor.line, this.col, e.key);
-          this.cursor.el.previousElementSibling.textContent = this.cursor.line.value;
+          this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
           this.navigateRight();
       }
     };
 
-    // contained to line-group specifically, hovering will not be active anywhere else
-    this.editorEl.lastElementChild.addEventListener("mousemove", (e: MouseEvent) => {
-      // if (this.hovering) {
-      //   // if not scrolled perfectly aligned on a new line add the additional offset to get to the correct row
-      //   const offset = this.editorEl.scrollTop % 16;
-      //   const computedRow = Math.floor(this.offsetFromTop) + (Math.floor((e.y + offset) / 16) - 2); // - 2 just cause thats what works ?
-      //   const computedCol = Math.round(e.offsetX / 7.8);
-      //   const lineHovering = this.lineCache.get(computedRow);
-      //   if (computedCol > lineHovering.el.firstElementChild.textContent.length) {
-      //     this.col = lineHovering.el.firstElementChild.textContent.length;
-      //   } else if (computedCol > 0) {
-      //     this.col = computedCol;
-      //   }
-      //   this.highlightedRegion = {
-      //     ...this.hovering,
-      //     endingLine: lineHovering,
-      //     endingCol: this.col,
-      //     isBackwards:
-      //       this.hovering.startingRow === computedRow
-      //         ? this.hovering.startingCol > this.col
-      //         : this.hovering.startingRow > computedRow,
-      //   };
-      //   this.updateCurrentLine(lineHovering, false);
-      // }
-    });
-
-    window.addEventListener("mouseup", (e: MouseEvent) => {
-      this.hovering = null;
-    });
-
     document.addEventListener("keydown", this.keydownEventListener);
   }
 
-  // cursor is "backgrounded" by default
   background() {
     this.editorEl.remove();
     document.removeEventListener("keydown", this.keydownEventListener);

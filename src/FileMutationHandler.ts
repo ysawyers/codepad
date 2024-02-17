@@ -4,14 +4,6 @@ interface Line {
   next: Line | null;
 }
 
-interface Highlight {
-  startingLine: Line;
-  startingCol: number;
-  endingLine: Line;
-  endingCol: number;
-  isBackwards: boolean;
-}
-
 export class FileMutationHandler {
   head: Line;
   size: number;
@@ -120,34 +112,5 @@ export class FileMutationHandler {
     this.size--;
 
     return newColPos;
-  }
-
-  batchRemove(range: Highlight) {
-    // if (range.endingLine == range.startingLine) {
-    //   let oldText = range.startingLine.el.firstElementChild.textContent;
-    //   if (range.isBackwards) {
-    //     range.endingLine.el.firstElementChild.textContent =
-    //       oldText.slice(0, range.endingCol) + oldText.slice(range.startingCol);
-    //   } else {
-    //     range.startingLine.el.firstElementChild.textContent =
-    //       oldText.slice(0, range.startingCol) + oldText.slice(range.endingCol);
-    //   }
-    //   return;
-    // }
-    // if (range.isBackwards) {
-    //   const startingLineText = range.startingLine.el.firstElementChild.textContent;
-    //   const endingLineText = range.endingLine.el.firstElementChild.textContent;
-    //   range.endingLine.el.firstElementChild.textContent =
-    //     endingLineText.slice(0, range.endingCol) + startingLineText.slice(range.startingCol);
-    //   range.endingLine.next = range.startingLine.next;
-    //   range.startingLine.next.prev = range.endingLine;
-    // } else {
-    //   const endingLineText = range.endingLine.el.firstElementChild.textContent;
-    //   const startingLineText = range.startingLine.el.firstElementChild.textContent;
-    //   range.startingLine.el.firstElementChild.textContent =
-    //     startingLineText.slice(0, range.startingCol) + endingLineText.slice(range.endingCol);
-    //   range.startingLine.next = range.endingLine.next;
-    //   range.endingLine.next.prev = range.startingLine;
-    // }
   }
 }
