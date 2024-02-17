@@ -144,7 +144,13 @@ export class FileDisplayRenderer {
 
       this.cursor.line = this.cursor.line.prev;
 
-      const prevLineEl = this.cursor.el.parentElement.previousElementSibling as HTMLElement;
+      let prevLineEl;
+      for (let i = 0; i < this.lineRenderingQueue.length; i++) {
+        if (this.lineRenderingQueue[i].isSameNode(this.cursor.lineEl)) {
+          prevLineEl = this.lineRenderingQueue[i - 1];
+          break;
+        }
+      }
 
       let computedCol = this.colAnchor;
       if (this.colAnchor > this.cursor.line.value.length)
@@ -169,7 +175,13 @@ export class FileDisplayRenderer {
 
       this.cursor.line = this.cursor.line.next;
 
-      const nextLineEl = this.cursor.el.parentElement.nextElementSibling as HTMLElement;
+      let nextLineEl;
+      for (let i = 0; i < this.lineRenderingQueue.length; i++) {
+        if (this.lineRenderingQueue[i].isSameNode(this.cursor.lineEl)) {
+          nextLineEl = this.lineRenderingQueue[i + 1];
+          break;
+        }
+      }
 
       let computedCol = this.colAnchor;
       if (this.colAnchor > this.cursor.line.value.length)
@@ -185,14 +197,12 @@ export class FileDisplayRenderer {
       this.cursor.el = updatedCursor;
       this.cursor.lineEl = nextLineEl;
 
-      const visibleLines =
-        (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
-
-      const [row, _] = this.lineCache.get(nextLineEl);
-
-      if (visibleLines - (row % visibleLines) < 5) {
+      const cursorDistanceFromTop = this.cursor.el.getBoundingClientRect().top;
+      if (this.viewportHeight - LINE_HEIGHT * 2 < cursorDistanceFromTop) {
         this.editorEl.scrollTo({
-          top: this.scrollOffsetFromTop + 16,
+          top:
+            this.scrollOffsetFromTop +
+            (cursorDistanceFromTop - (this.viewportHeight - LINE_HEIGHT * 2)),
           behavior: "instant",
         });
       }
