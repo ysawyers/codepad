@@ -40,6 +40,7 @@ export class FileDisplayRenderer {
     line: Line;
   };
 
+  // TODO: Replace lineRenderingQueue with circular buffer instead to reduce GC pressure
   private lineRenderingQueue: HTMLElement[];
   private lineCache: Map<HTMLElement, [number, Line]>;
 
@@ -267,67 +268,56 @@ export class FileDisplayRenderer {
     this.cursor.visibleOnDOM = true;
     this.cursor.lineEl = lineGroup.firstElementChild as HTMLElement;
 
-    const cleanup = throttledEventListener(this.editorEl, "scroll", () => {
+    this.editorEl.addEventListener("scroll", () => {
       const newScrollOffset = this.editorEl.scrollTop;
 
       const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
       this.scrollOffsetFromTop = newScrollOffset;
 
-      // TODO: Compute this myself.
-      const firstVisibleLinePos = this.lineRenderingQueue[0].getBoundingClientRect().top;
-      const lastVisibleLinePos =
-        this.lineRenderingQueue[this.lineRenderingQueue.length - 1].getBoundingClientRect().top;
+      const firstVisibleLineOffset =
+        this.lineRenderingQueue[0].offsetTop - this.scrollOffsetFromTop + 16;
 
-      // OOB: Out of bounds
-      const isEntireRegionOOB = firstVisibleLinePos > this.viewportHeight || lastVisibleLinePos < 0;
+      const lastVisibleLineOffset =
+        this.lineRenderingQueue[this.lineRenderingQueue.length - 1].offsetTop -
+        this.scrollOffsetFromTop -
+        this.viewportHeight +
+        16;
 
-      if (isEntireRegionOOB) {
-        this.flushRenderingQueueAndRemount();
-      } else if (isScrollingDown) {
-        const distanceAwayFromViewport = 0 - firstVisibleLinePos;
+      if (isScrollingDown && firstVisibleLineOffset < 0) {
+        const numLinesToRecompute = Math.ceil((0 - firstVisibleLineOffset) / LINE_HEIGHT);
 
-        if (distanceAwayFromViewport > 0) {
-          const numLinesToRecompute = Math.ceil(distanceAwayFromViewport / LINE_HEIGHT);
+        for (let i = 0; i < numLinesToRecompute; i++) {
+          const lastLineRendered = this.lineRenderingQueue[this.lineRenderingQueue.length - 1];
+          const [row, line] = this.lineCache.get(lastLineRendered);
 
-          for (let i = 0; i < numLinesToRecompute; i++) {
-            const lastLineRendered = this.lineRenderingQueue[this.lineRenderingQueue.length - 1];
-            const [row, line] = this.lineCache.get(lastLineRendered);
+          // no more lines to render at the bottom
+          if (!line.next) break;
 
-            // no more lines to render at the bottom
-            if (!line.next) break;
+          const lineEl = this.lineRenderingQueue.shift();
 
-            const lineEl = this.lineRenderingQueue.shift();
+          lineEl.style.top = `${row + 1}em`;
+          lineEl.firstElementChild.textContent = line.next.value;
+          this.lineCache.set(lineEl, [row + 1, line.next]);
 
-            lineEl.style.top = `${row + 1}em`;
-            lineEl.firstElementChild.textContent = line.next.value;
-
-            this.lineCache.set(lineEl, [row + 1, line.next]);
-
-            this.lineRenderingQueue.push(lineEl);
-          }
+          this.lineRenderingQueue.push(lineEl);
         }
-      } else {
-        const distanceAwayFromViewport = lastVisibleLinePos - this.viewportHeight;
+      } else if (!isScrollingDown && lastVisibleLineOffset > 0) {
+        const numLinesToRecompute = Math.ceil(lastVisibleLineOffset / LINE_HEIGHT);
 
-        if (distanceAwayFromViewport > 0) {
-          const numLinesToRecompute = Math.ceil(distanceAwayFromViewport / LINE_HEIGHT);
+        for (let i = 0; i < numLinesToRecompute; i++) {
+          const firstLineRendered = this.lineRenderingQueue[0];
+          const [row, line] = this.lineCache.get(firstLineRendered);
 
-          for (let i = 0; i < numLinesToRecompute; i++) {
-            const firstLineRendered = this.lineRenderingQueue[0];
-            const [row, line] = this.lineCache.get(firstLineRendered);
+          // no more lines to render at the top
+          if (!line.prev) break;
 
-            // no more lines to render at the top
-            if (!line.prev) break;
+          const lineEl = this.lineRenderingQueue.pop();
 
-            const lineEl = this.lineRenderingQueue.pop();
+          lineEl.style.top = `${row - 1}em`;
+          lineEl.firstElementChild.textContent = line.prev.value;
+          this.lineCache.set(lineEl, [row - 1, line.prev]);
 
-            lineEl.style.top = `${row - 1}em`;
-            lineEl.firstElementChild.textContent = line.prev.value;
-
-            this.lineCache.set(lineEl, [row - 1, line.prev]);
-
-            this.lineRenderingQueue.unshift(lineEl);
-          }
+          this.lineRenderingQueue.unshift(lineEl);
         }
       }
 
@@ -344,7 +334,6 @@ export class FileDisplayRenderer {
         this.cursor.visibleOnDOM = false;
       }
     });
-    this.throttledScrollEventListenerCleanup = cleanup;
 
     this.keydownEventListener = (e: KeyboardEvent) => {
       switch (e.key) {
