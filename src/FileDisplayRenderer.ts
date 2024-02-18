@@ -40,9 +40,7 @@ export class FileDisplayRenderer {
     line: Line;
   };
 
-  private lineRenderingQueue: HTMLElement[];
-
-  private paintedScope: ScopedRingBuffer;
+  private paintedScope: RingBuffer<HTMLElement>;
   private scopedRegion: Map<HTMLElement, [number, Line]>;
 
   private viewportHeight: number;
@@ -64,10 +62,8 @@ export class FileDisplayRenderer {
     this.col = col;
     this.colAnchor = this.col;
 
-    this.lineRenderingQueue = [];
-    this.scopedRegion = new Map();
-
     this.file = new FileMutationHandler(fileText);
+    this.scopedRegion = new Map();
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
@@ -125,9 +121,9 @@ export class FileDisplayRenderer {
       this.cursor.line = this.cursor.line.prev;
 
       let prevLineEl;
-      for (let i = 0; i < this.lineRenderingQueue.length; i++) {
-        if (this.lineRenderingQueue[i].isSameNode(this.cursor.lineEl)) {
-          prevLineEl = this.lineRenderingQueue[i - 1];
+      for (let i = 0; i < this.paintedScope.size(); i++) {
+        if (this.paintedScope.get(i).isSameNode(this.cursor.lineEl)) {
+          prevLineEl = this.paintedScope.get(i - 1);
           break;
         }
       }
@@ -155,9 +151,9 @@ export class FileDisplayRenderer {
       this.cursor.line = this.cursor.line.next;
 
       let nextLineEl;
-      for (let i = 0; i < this.lineRenderingQueue.length; i++) {
-        if (this.lineRenderingQueue[i].isSameNode(this.cursor.lineEl)) {
-          nextLineEl = this.lineRenderingQueue[i + 1];
+      for (let i = 0; i < this.paintedScope.size(); i++) {
+        if (this.paintedScope.get(i).isSameNode(this.cursor.lineEl)) {
+          nextLineEl = this.paintedScope.get(i + 1);
           break;
         }
       }
@@ -188,23 +184,24 @@ export class FileDisplayRenderer {
     }
   }
 
-  // For any drastic changes that needs a total repaint for the scoped region
   private flushRenderingQueueAndRemount() {
     this.scopedRegion.clear();
 
     const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
     let currLine = this.file.getLineFromRow(startingRow);
 
-    for (let i = 0; i < this.lineRenderingQueue.length; i++) {
-      this.scopedRegion.set(this.lineRenderingQueue[i], [startingRow + i, currLine]);
+    for (let i = 0; i < this.paintedScope.size(); i++) {
+      const lineEl = this.paintedScope.get(i);
 
-      this.lineRenderingQueue[i].style.top = `${startingRow + i}em`;
-      this.lineRenderingQueue[i].firstElementChild.textContent = currLine.value;
+      this.scopedRegion.set(lineEl, [startingRow + i, currLine]);
+
+      lineEl.style.top = `${startingRow + i}em`;
+      lineEl.firstElementChild.textContent = currLine.value;
 
       if (this.row === startingRow + i) {
         this.cursor.cursorEl.remove();
-        this.lineRenderingQueue[i].appendChild(this.cursor.cursorEl);
-        this.cursor.lineEl = this.lineRenderingQueue[i];
+        lineEl.appendChild(this.cursor.cursorEl);
+        this.cursor.lineEl = lineEl;
       }
       currLine = currLine.next;
     }
@@ -225,10 +222,6 @@ export class FileDisplayRenderer {
       const lineContainer = document.createElement("div");
       lineContainer.className = "line";
       lineContainer.style.top = `${i}em`;
-
-      const textEl = document.createElement("span");
-      textEl.className = "default-line-text";
-      textEl.textContent = curr.value;
 
       lineContainer.addEventListener("mousedown", (e) => {
         const [row, line] = this.scopedRegion.get(lineContainer);
@@ -257,23 +250,24 @@ export class FileDisplayRenderer {
         lineContainer.appendChild(updatedCursor);
       });
 
+      const textEl = document.createElement("span");
+      textEl.className = "default-line-text";
+      textEl.textContent = curr.value;
+
       lineContainer.appendChild(textEl);
-
-      this.lineRenderingQueue.push(lineContainer);
-
-      data.push(lineContainer);
-
       lineGroup.appendChild(lineContainer);
 
+      data.push(lineContainer);
       this.scopedRegion.set(lineContainer, [i, curr]);
+
       curr = curr.next;
     }
-
-    this.paintedScope = new ScopedRingBuffer(data);
 
     lineGroup.firstElementChild.appendChild(this.cursor.cursorEl);
     this.cursor.visibleOnDOM = true;
     this.cursor.lineEl = lineGroup.firstElementChild as HTMLElement;
+
+    this.paintedScope = new RingBuffer<HTMLElement>(data);
 
     const cleanup = throttledEventListener(this.editorEl, "scroll", () => {
       const newScrollOffset = this.editorEl.scrollTop;
@@ -403,12 +397,12 @@ export class FileDisplayRenderer {
 }
 
 // manages true ordering of lines outside of the DOM (all lines physically on the DOM are just absolutely positioned arbitrarily)
-class ScopedRingBuffer {
-  private data: HTMLElement[];
+class RingBuffer<T> {
+  private data: T[];
   private headP: number;
   private tailP: number;
 
-  constructor(data: HTMLElement[]) {
+  constructor(data: T[]) {
     this.data = data;
     this.headP = 0;
     this.tailP = this.data.length - 1;
@@ -430,5 +424,13 @@ class ScopedRingBuffer {
   moveBackward() {
     this.headP = this.tailP;
     this.tailP = this.headP - 1;
+  }
+
+  get(idx: number) {
+    return this.data[(this.headP + idx) % this.data.length];
+  }
+
+  size() {
+    return this.data.length;
   }
 }
