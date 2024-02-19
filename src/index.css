@@ -128,20 +128,16 @@ body {
 }
 
 .line-container {
-  /* flex-grow: 1 */
+  flex-grow: 1;
   position: relative;
   background-color: #1b1c26;
   cursor: text;
-  padding-bottom: 30em;
-
-  /* TODO: CHANGE EVENTUALLY (im trying to figure out how to get scroll in the x axis to work) */
-  width: 90%;
 }
 
 .line {
   position: absolute;
   height: 1em;
-  width: 100%;
+  width: 50em;
 }
 
 .default-line-text {

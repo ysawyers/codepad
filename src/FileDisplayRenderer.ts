@@ -215,59 +215,66 @@ export class FileDisplayRenderer {
 
     const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
 
-    let data = [];
-    let curr = this.file.head;
+    if (!this.paintedScope) {
+      let data = [];
+      let curr = this.file.head;
 
-    for (let i = 0; i < visibleLines; i++) {
-      const lineContainer = document.createElement("div");
-      lineContainer.className = "line";
-      lineContainer.style.top = `${i}em`;
+      for (let i = 0; i < visibleLines; i++) {
+        const lineContainer = document.createElement("div");
+        lineContainer.className = "line";
+        lineContainer.style.top = `${i}em`;
 
-      lineContainer.addEventListener("mousedown", (e) => {
-        const [row, line] = this.scopedRegion.get(lineContainer);
+        lineContainer.addEventListener("mousedown", (e) => {
+          const [row, line] = this.scopedRegion.get(lineContainer);
 
-        const distanceFromLeft =
-          e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
+          const distanceFromLeft =
+            e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
 
-        let col = Math.round(distanceFromLeft / 7.8);
-        if (col > lineContainer.firstElementChild.textContent.length) {
-          col = lineContainer.firstElementChild.textContent.length;
-        }
+          let col = Math.round(distanceFromLeft / 7.8);
+          if (col > lineContainer.firstElementChild.textContent.length) {
+            col = lineContainer.firstElementChild.textContent.length;
+          }
 
-        this.row = row;
-        this.updateColWithAnchor(col);
+          this.row = row;
+          this.updateColWithAnchor(col);
 
-        const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
-        updatedCursor.style.left = `${this.col * 7.8}px`;
-        this.cursor.cursorEl.remove();
+          const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
+          updatedCursor.style.left = `${this.col * 7.8}px`;
+          this.cursor.cursorEl.remove();
 
-        this.cursor = {
-          cursorEl: updatedCursor,
-          line,
-          visibleOnDOM: true,
-          lineEl: lineContainer,
-        };
-        lineContainer.appendChild(updatedCursor);
+          this.cursor = {
+            cursorEl: updatedCursor,
+            line,
+            visibleOnDOM: true,
+            lineEl: lineContainer,
+          };
+          lineContainer.appendChild(updatedCursor);
+        });
+
+        const textEl = document.createElement("span");
+        textEl.className = "default-line-text";
+        textEl.textContent = curr.value;
+
+        lineContainer.appendChild(textEl);
+        lineGroup.appendChild(lineContainer);
+
+        data.push(lineContainer);
+        this.scopedRegion.set(lineContainer, [i, curr]);
+
+        curr = curr.next;
+      }
+
+      this.paintedScope = new RingBuffer<HTMLElement>(data);
+
+      lineGroup.firstElementChild.appendChild(this.cursor.cursorEl);
+      this.cursor.visibleOnDOM = true;
+      this.cursor.lineEl = lineGroup.firstElementChild as HTMLElement;
+    } else {
+      this.editorEl.scrollTo({
+        top: this.scrollOffsetFromTop,
+        behavior: "instant",
       });
-
-      const textEl = document.createElement("span");
-      textEl.className = "default-line-text";
-      textEl.textContent = curr.value;
-
-      lineContainer.appendChild(textEl);
-      lineGroup.appendChild(lineContainer);
-
-      data.push(lineContainer);
-      this.scopedRegion.set(lineContainer, [i, curr]);
-
-      curr = curr.next;
     }
-
-    lineGroup.firstElementChild.appendChild(this.cursor.cursorEl);
-    this.cursor.visibleOnDOM = true;
-    this.cursor.lineEl = lineGroup.firstElementChild as HTMLElement;
-
-    this.paintedScope = new RingBuffer<HTMLElement>(data);
 
     const cleanup = throttledEventListener(this.editorEl, "scroll", () => {
       const newScrollOffset = this.editorEl.scrollTop;
