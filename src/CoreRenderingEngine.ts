@@ -1,4 +1,7 @@
-import { FileMutationHandler } from "./FileMutationHandler";
+import { CoreFileHandler } from "./CoreFileHandler";
+
+// NOTE: Performance starts to break down (as well as display?) with very large files (only tested on file with ~1m lines).
+// TODO: Start implementing syntax highlighting.
 
 const LINE_HEIGHT = 16;
 
@@ -30,7 +33,7 @@ function throttledEventListener(
   return () => el.removeEventListener(ev, f);
 }
 
-export class FileDisplayRenderer {
+export class CoreRenderingEngine {
   private editorEl: HTMLElement;
 
   private cursor: {
@@ -40,7 +43,8 @@ export class FileDisplayRenderer {
     line: Line;
   };
 
-  private paintedScope: RingBuffer<HTMLElement>;
+  private visibleLines: RingBuffer<HTMLElement>;
+  private visibleLineNumbers: RingBuffer<HTMLElement>;
   private scopedRegion: Map<HTMLElement, [number, Line]>;
 
   private viewportHeight: number;
@@ -50,7 +54,7 @@ export class FileDisplayRenderer {
   private col: number;
   private colAnchor: number;
 
-  private file: FileMutationHandler;
+  private file: CoreFileHandler;
 
   private keydownEventListener: (e: KeyboardEvent) => void;
   private throttledScrollEventListenerCleanup: () => void;
@@ -62,7 +66,7 @@ export class FileDisplayRenderer {
     this.col = col;
     this.colAnchor = this.col;
 
-    this.file = new FileMutationHandler(fileText);
+    this.file = new CoreFileHandler(fileText);
     this.scopedRegion = new Map();
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
@@ -121,9 +125,9 @@ export class FileDisplayRenderer {
       this.cursor.line = this.cursor.line.prev;
 
       let prevLineEl;
-      for (let i = 0; i < this.paintedScope.size(); i++) {
-        if (this.paintedScope.get(i).isSameNode(this.cursor.lineEl)) {
-          prevLineEl = this.paintedScope.get(i - 1);
+      for (let i = 0; i < this.visibleLines.size(); i++) {
+        if (this.visibleLines.get(i).isSameNode(this.cursor.lineEl)) {
+          prevLineEl = this.visibleLines.get(i - 1);
           break;
         }
       }
@@ -151,9 +155,9 @@ export class FileDisplayRenderer {
       this.cursor.line = this.cursor.line.next;
 
       let nextLineEl;
-      for (let i = 0; i < this.paintedScope.size(); i++) {
-        if (this.paintedScope.get(i).isSameNode(this.cursor.lineEl)) {
-          nextLineEl = this.paintedScope.get(i + 1);
+      for (let i = 0; i < this.visibleLines.size(); i++) {
+        if (this.visibleLines.get(i).isSameNode(this.cursor.lineEl)) {
+          nextLineEl = this.visibleLines.get(i + 1);
           break;
         }
       }
@@ -185,13 +189,11 @@ export class FileDisplayRenderer {
   }
 
   private flushRenderingQueueAndRemount() {
-    this.scopedRegion.clear();
-
     const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
     let currLine = this.file.getLineFromRow(startingRow);
 
-    for (let i = 0; i < this.paintedScope.size(); i++) {
-      const lineEl = this.paintedScope.get(i);
+    for (let i = 0; i < this.visibleLines.size(); i++) {
+      const lineEl = this.visibleLines.get(i);
 
       this.scopedRegion.set(lineEl, [startingRow + i, currLine]);
 
@@ -205,6 +207,76 @@ export class FileDisplayRenderer {
       }
       currLine = currLine.next;
     }
+
+    const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
+
+    if (currLine && this.visibleLines.size() < visibleLines) {
+      const lineGroup = document.getElementById("line-group");
+      const lineNumberGroup = document.getElementById("line-number-group");
+
+      const row = startingRow + this.visibleLines.size();
+
+      const [lineNumberContainer, lineContainer] = this.renderNewLine(row);
+
+      const textEl = document.createElement("span");
+      textEl.className = "default-line-text";
+      textEl.textContent = currLine.value;
+
+      lineContainer.appendChild(textEl);
+      lineGroup.appendChild(lineContainer);
+
+      lineNumberGroup.appendChild(lineNumberContainer);
+
+      this.scopedRegion.set(lineContainer, [row, currLine]);
+      this.visibleLines.append(lineContainer);
+
+      lineGroup.style.height = `${this.file.size}em`;
+      lineNumberGroup.style.height = `${this.file.size}em`;
+    }
+  }
+
+  renderNewLine(row: number): [HTMLElement, HTMLElement] {
+    const lineContainer = document.createElement("div");
+    lineContainer.className = "line";
+    lineContainer.style.top = `${row}em`;
+
+    const lineNumberContainer = document.createElement("div");
+    lineNumberContainer.className = "line-number";
+    lineNumberContainer.style.top = `${row}em`;
+
+    const lineNumberValue = document.createElement("div");
+    lineNumberValue.className = "line-number-value";
+    lineNumberValue.textContent = `${row + 1}`;
+
+    lineNumberContainer.appendChild(lineNumberValue);
+
+    lineContainer.addEventListener("mousedown", (e) => {
+      const [row, line] = this.scopedRegion.get(lineContainer);
+
+      const distanceFromLeft = e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
+
+      let col = Math.round(distanceFromLeft / 7.8);
+      if (col > lineContainer.firstElementChild.textContent.length) {
+        col = lineContainer.firstElementChild.textContent.length;
+      }
+
+      this.row = row;
+      this.updateColWithAnchor(col);
+
+      const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
+      updatedCursor.style.left = `${this.col * 7.8}px`;
+      this.cursor.cursorEl.remove();
+
+      this.cursor = {
+        cursorEl: updatedCursor,
+        line,
+        visibleOnDOM: true,
+        lineEl: lineContainer,
+      };
+      lineContainer.appendChild(updatedCursor);
+    });
+
+    return [lineNumberContainer, lineContainer];
   }
 
   foreground() {
@@ -213,58 +285,38 @@ export class FileDisplayRenderer {
     const lineGroup = document.getElementById("line-group");
     lineGroup.style.height = `${this.file.size}em`;
 
+    const lineNumberGroup = document.getElementById("line-number-group");
+    lineNumberGroup.style.height = `${this.file.size}em`;
+
     const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
 
-    if (!this.paintedScope) {
-      let data = [];
+    if (!this.visibleLines) {
+      let visibleLinesData = [];
+      let visibleLineNumbersData = [];
       let curr = this.file.head;
 
       for (let i = 0; i < visibleLines; i++) {
-        const lineContainer = document.createElement("div");
-        lineContainer.className = "line";
-        lineContainer.style.top = `${i}em`;
-
-        lineContainer.addEventListener("mousedown", (e) => {
-          const [row, line] = this.scopedRegion.get(lineContainer);
-
-          const distanceFromLeft =
-            e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
-
-          let col = Math.round(distanceFromLeft / 7.8);
-          if (col > lineContainer.firstElementChild.textContent.length) {
-            col = lineContainer.firstElementChild.textContent.length;
-          }
-
-          this.row = row;
-          this.updateColWithAnchor(col);
-
-          const updatedCursor = this.cursor.cursorEl.cloneNode(true) as HTMLDivElement;
-          updatedCursor.style.left = `${this.col * 7.8}px`;
-          this.cursor.cursorEl.remove();
-
-          this.cursor = {
-            cursorEl: updatedCursor,
-            line,
-            visibleOnDOM: true,
-            lineEl: lineContainer,
-          };
-          lineContainer.appendChild(updatedCursor);
-        });
+        if (!curr) break;
 
         const textEl = document.createElement("span");
         textEl.className = "default-line-text";
         textEl.textContent = curr.value;
 
+        const [lineNumberContainer, lineContainer] = this.renderNewLine(i);
+
         lineContainer.appendChild(textEl);
         lineGroup.appendChild(lineContainer);
+        lineNumberGroup.appendChild(lineNumberContainer);
 
-        data.push(lineContainer);
+        visibleLinesData.push(lineContainer);
+        visibleLineNumbersData.push(lineNumberContainer);
         this.scopedRegion.set(lineContainer, [i, curr]);
 
         curr = curr.next;
       }
 
-      this.paintedScope = new RingBuffer<HTMLElement>(data);
+      this.visibleLines = new RingBuffer<HTMLElement>(visibleLinesData);
+      this.visibleLineNumbers = new RingBuffer<HTMLElement>(visibleLineNumbersData);
 
       lineGroup.firstElementChild.appendChild(this.cursor.cursorEl);
       this.cursor.visibleOnDOM = true;
@@ -281,8 +333,8 @@ export class FileDisplayRenderer {
       const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
       this.scrollOffsetFromTop = newScrollOffset;
 
-      const firstLineEl = this.paintedScope.getHeadRef();
-      const lastLineEl = this.paintedScope.getTailRef();
+      const firstLineEl = this.visibleLines.getHeadRef();
+      const lastLineEl = this.visibleLines.getTailRef();
 
       const firstVisibleLineOffset = firstLineEl.offsetTop - this.scrollOffsetFromTop + 16;
 
@@ -293,35 +345,47 @@ export class FileDisplayRenderer {
         const numLinesToRecompute = Math.ceil((0 - firstVisibleLineOffset) / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
-          const [row, line] = this.scopedRegion.get(this.paintedScope.getTailRef());
+          const [row, line] = this.scopedRegion.get(this.visibleLines.getTailRef());
 
           // no more lines to render at the bottom
           if (!line.next) break;
 
-          const old = this.paintedScope.getHeadRef();
+          // elements (lines) at the top that have been scrolled off-screen getting adjusted
+          const oldLineEl = this.visibleLines.getHeadRef();
+          const oldLineNumberEl = this.visibleLineNumbers.getHeadRef();
 
-          old.style.top = `${row + 1}em`;
-          old.firstElementChild.textContent = line.next.value;
-          this.scopedRegion.set(old, [row + 1, line.next]);
+          oldLineEl.style.top = `${row + 1}em`;
+          oldLineEl.firstElementChild.textContent = line.next.value;
+          this.scopedRegion.set(oldLineEl, [row + 1, line.next]);
 
-          this.paintedScope.moveForward();
+          oldLineNumberEl.style.top = `${row + 1}em`;
+          oldLineNumberEl.firstElementChild.textContent = `${row + 1}`;
+
+          this.visibleLines.moveForward();
+          this.visibleLineNumbers.moveForward();
         }
       } else if (!isScrollingDown && lastVisibleLineOffset > 0) {
         const numLinesToRecompute = Math.ceil(lastVisibleLineOffset / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
-          const [row, line] = this.scopedRegion.get(this.paintedScope.getHeadRef());
+          const [row, line] = this.scopedRegion.get(this.visibleLines.getHeadRef());
 
           // no more lines to render at the top
           if (!line.prev) break;
 
-          const old = this.paintedScope.getTailRef();
+          // elements (lines) at the bottom that have been scrolled off-screen getting adjusted
+          const oldLineEl = this.visibleLines.getTailRef();
+          const oldLineNumberEl = this.visibleLineNumbers.getTailRef();
 
-          old.style.top = `${row - 1}em`;
-          old.firstElementChild.textContent = line.prev.value;
-          this.scopedRegion.set(old, [row - 1, line.prev]);
+          oldLineEl.style.top = `${row - 1}em`;
+          oldLineEl.firstElementChild.textContent = line.prev.value;
+          this.scopedRegion.set(oldLineEl, [row - 1, line.prev]);
 
-          this.paintedScope.moveBackward();
+          oldLineNumberEl.style.top = `${row - 1}em`;
+          oldLineNumberEl.firstElementChild.textContent = `${row}`;
+
+          this.visibleLines.moveBackward();
+          this.visibleLineNumbers.moveBackward();
         }
       }
 
@@ -359,17 +423,17 @@ export class FileDisplayRenderer {
           break;
 
         case "Backspace":
-          {
-            if (this.col > 0) {
-              this.file.deleteCharacter(this.cursor.line, this.col);
-              this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
-              this.navigateLeft();
-            } else {
-              const snapTo = this.file.removeCurrentLine(this.cursor.line);
-              this.flushRenderingQueueAndRemount();
-              this.updateColWithAnchor(snapTo);
-              this.navigateUp();
-            }
+          if (this.col > 0) {
+            this.file.deleteCharacter(this.cursor.line, this.col);
+            this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
+            this.navigateLeft();
+          } else {
+            const snapTo = this.file.removeCurrentLine(this.cursor.line);
+            lineGroup.style.height = `${this.file.size}em`;
+            lineNumberGroup.style.height = `${this.file.size}em`;
+            this.updateColWithAnchor(snapTo);
+            this.navigateUp();
+            this.flushRenderingQueueAndRemount();
           }
           break;
 
@@ -381,9 +445,11 @@ export class FileDisplayRenderer {
 
         case "Enter":
           this.file.createNewLine(this.cursor.line, this.col);
-          this.flushRenderingQueueAndRemount();
+          lineGroup.style.height = `${this.file.size + 1}em`;
+          lineNumberGroup.style.height = `${this.file.size + 1}em`;
           this.updateColWithAnchor(0);
           this.navigateDown();
+          this.flushRenderingQueueAndRemount();
           break;
 
         default:
@@ -435,6 +501,11 @@ class RingBuffer<T> {
 
   get(idx: number) {
     return this.data[(this.headP + idx) % this.data.length];
+  }
+
+  append(el: T) {
+    this.data.splice(this.tailP + 1, 0, el);
+    this.tailP++;
   }
 
   size() {

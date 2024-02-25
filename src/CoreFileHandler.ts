@@ -4,7 +4,7 @@ interface Line {
   next: Line | null;
 }
 
-export class FileMutationHandler {
+export class CoreFileHandler {
   head: Line;
   size: number;
 
@@ -16,7 +16,10 @@ export class FileMutationHandler {
       prev: null,
       value: "",
     };
-    if (fileText.length) this.head = null;
+    if (fileText.length) {
+      this.head = null;
+      this.size = 0;
+    }
 
     let curr = this.head;
     let lineAnch = 0;

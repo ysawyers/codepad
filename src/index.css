@@ -23,11 +23,6 @@ body {
   font-family: "Barlow", sans-serif;
 }
 
-/* .folder-text:hover {
-  background-color: rgba(219, 221, 223, 0.1);
-  cursor: pointer;
-} */
-
 .folder-files-container > * {
   padding-left: 10px;
   margin-bottom: 5px;
@@ -128,16 +123,15 @@ body {
 }
 
 .line-container {
-  flex-grow: 1;
+  flex: 1;
   position: relative;
-  background-color: #1b1c26;
   cursor: text;
 }
 
 .line {
   position: absolute;
   height: 1em;
-  width: 50em;
+  width: 100%;
 }
 
 .default-line-text {
@@ -169,10 +163,24 @@ body {
 }
 
 .line-number-container {
+  position: relative;
   width: 3em;
-  height: 100%;
+  height: 100em;
+}
+
+.line-number {
+  position: absolute;
   background-color: #1b1c26;
-  position: sticky;
+  color: #6d7681;
+  font-family: "DM Mono", monospace;
+  height: 1em;
+  width: 100%;
+}
+
+.line-number-value {
+  text-align: right;
+  font-size: 13px;
+  margin-right: 1em;
 }
 
 .highlight {
@@ -180,8 +188,5 @@ body {
   background-color: rgba(219, 221, 223, 0.1);
   height: 1em;
   border-radius: 2px;
-}
-
-span::selection {
-  background-color: rgba(219, 221, 223, 0.3);
+  padding: 1px;
 }
