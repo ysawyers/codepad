@@ -145,6 +145,19 @@ export class CoreRenderingEngine {
       prevLineEl.appendChild(updatedCursor);
       this.cursor.cursorEl = updatedCursor;
       this.cursor.lineEl = prevLineEl;
+
+      const cursorDistanceFromTop =
+        this.cursor.lineEl.getBoundingClientRect().top % this.viewportHeight;
+
+      if (cursorDistanceFromTop < LINE_HEIGHT * 6) {
+        this.editorEl.scrollTo({
+          top:
+            Math.floor(
+              (this.scrollOffsetFromTop - Math.floor(Math.abs(81 - cursorDistanceFromTop))) / 16
+            ) * 16,
+          behavior: "instant",
+        });
+      }
     }
   }
 
