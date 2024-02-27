@@ -1,9 +1,19 @@
-import { CoreFileHandler } from "./CoreFileHandler";
+import { CoreFileHandler, insertCharacter, deleteCharacter, tokenize } from "./CoreFileHandler";
 
-// NOTE: Performance starts to break down (as well as display?) with very large files (only tested on file with ~1m lines).
+// TODO: Bug with creating new line when the last line is visible after rendering all viewport lines.
 // TODO: Start implementing syntax highlighting.
 
 const LINE_HEIGHT = 16;
+
+enum TokenType {
+  Whitespace = 0,
+  Ident,
+}
+
+interface Token {
+  type: TokenType;
+  lexeme: string;
+}
 
 interface Line {
   prev: Line | null;
@@ -203,7 +213,7 @@ export class CoreRenderingEngine {
 
   private flushRenderingQueueAndRemount() {
     const startingRow = Math.floor(this.scrollOffsetFromTop / 16);
-    let currLine = this.file.getLineFromRow(startingRow);
+    let currLine = this.file.getLine(startingRow);
 
     for (let i = 0; i < this.visibleLines.size(); i++) {
       const lineEl = this.visibleLines.get(i);
@@ -292,6 +302,37 @@ export class CoreRenderingEngine {
     return [lineNumberContainer, lineContainer];
   }
 
+  // will render excess <spans> than what is needed but will reduce on the amount of DOM operations by a lot
+  renderTokens(line: Line, tokenWrapper: HTMLElement) {
+    const tokens: Token[] = tokenize(line);
+    let fragment = new DocumentFragment();
+
+    const children = tokenWrapper.children;
+    for (let i = 0; i < children.length; i++) {
+      if (i < tokens.length) {
+        // @ts-ignore
+        children[i].style.color = tokens[i].type == TokenType.Ident ? "#91CCEB" : "";
+        children[i].textContent = tokens[i].lexeme;
+      } else {
+        // @ts-ignore
+        children[i].style.color = "";
+        children[i].textContent = "";
+      }
+    }
+
+    if (tokens.length > children.length) {
+      for (let i = children.length; i < tokens.length; i++) {
+        const tokenEl = document.createElement("span");
+        tokenEl.className = "default-line-text";
+        tokenEl.style.color = tokens[i].type == TokenType.Ident ? "#91CCEB" : "";
+        tokenEl.textContent = tokens[i].lexeme;
+        fragment.appendChild(tokenEl);
+      }
+
+      tokenWrapper.append(fragment);
+    }
+  }
+
   foreground() {
     document.getElementById("workspace-group").appendChild(this.editorEl);
 
@@ -300,6 +341,7 @@ export class CoreRenderingEngine {
 
     const lineNumberGroup = document.getElementById("line-number-group");
     lineNumberGroup.style.height = `${this.file.size}em`;
+    lineNumberGroup.style.width = `${this.file.size.toString().length * 7.8 + 30}px`;
 
     const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
 
@@ -311,13 +353,13 @@ export class CoreRenderingEngine {
       for (let i = 0; i < visibleLines; i++) {
         if (!curr) break;
 
-        const textEl = document.createElement("span");
-        textEl.className = "default-line-text";
-        textEl.textContent = curr.value;
-
         const [lineNumberContainer, lineContainer] = this.renderNewLine(i);
 
-        lineContainer.appendChild(textEl);
+        const tokenWrapper = document.createElement("span");
+        tokenWrapper.style.position = "absolute";
+        this.renderTokens(curr, tokenWrapper);
+
+        lineContainer.appendChild(tokenWrapper);
         lineGroup.appendChild(lineContainer);
         lineNumberGroup.appendChild(lineNumberContainer);
 
@@ -368,7 +410,7 @@ export class CoreRenderingEngine {
           const oldLineNumberEl = this.visibleLineNumbers.getHeadRef();
 
           oldLineEl.style.top = `${row + 1}em`;
-          oldLineEl.firstElementChild.textContent = line.next.value;
+          this.renderTokens(line.next, oldLineEl.firstElementChild as HTMLElement);
           this.scopedRegion.set(oldLineEl, [row + 1, line.next]);
 
           oldLineNumberEl.style.top = `${row + 1}em`;
@@ -391,7 +433,7 @@ export class CoreRenderingEngine {
           const oldLineNumberEl = this.visibleLineNumbers.getTailRef();
 
           oldLineEl.style.top = `${row - 1}em`;
-          oldLineEl.firstElementChild.textContent = line.prev.value;
+          this.renderTokens(line.prev, oldLineEl.firstElementChild as HTMLElement);
           this.scopedRegion.set(oldLineEl, [row - 1, line.prev]);
 
           oldLineNumberEl.style.top = `${row - 1}em`;
@@ -437,11 +479,11 @@ export class CoreRenderingEngine {
 
         case "Backspace":
           if (this.col > 0) {
-            this.file.deleteCharacter(this.cursor.line, this.col);
+            deleteCharacter(this.cursor.line, this.col);
             this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
             this.navigateLeft();
           } else {
-            const snapTo = this.file.removeCurrentLine(this.cursor.line);
+            const snapTo = this.file.removeLine(this.cursor.line);
             lineGroup.style.height = `${this.file.size}em`;
             lineNumberGroup.style.height = `${this.file.size}em`;
             this.updateColWithAnchor(snapTo);
@@ -456,17 +498,21 @@ export class CoreRenderingEngine {
         case "Meta":
           break;
 
+        // TODO: Fix for shits
         case "Enter":
-          this.file.createNewLine(this.cursor.line, this.col);
+          this.file.createLine(this.cursor.line, this.col);
+          // this.flushRenderingQueueAndRemount();
+
           lineGroup.style.height = `${this.file.size + 1}em`;
           lineNumberGroup.style.height = `${this.file.size + 1}em`;
-          this.updateColWithAnchor(0);
-          this.navigateDown();
-          this.flushRenderingQueueAndRemount();
+
+          // this.updateColWithAnchor(0);
+          // this.navigateDown();
+
           break;
 
         default:
-          this.file.insertCharacter(this.cursor.line, this.col, e.key);
+          insertCharacter(this.cursor.line, this.col, e.key);
           this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
           this.navigateRight();
       }
@@ -482,7 +528,6 @@ export class CoreRenderingEngine {
   }
 }
 
-// manages true ordering of lines outside of the DOM (all lines physically on the DOM are just absolutely positioned arbitrarily)
 class RingBuffer<T> {
   private data: T[];
   private headP: number;

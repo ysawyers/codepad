@@ -135,13 +135,12 @@ body {
 }
 
 .default-line-text {
-  position: absolute;
-  color: white;
+  display: inline-block;
+  white-space: pre;
+  max-height: 16px;
   font-family: "DM Mono", monospace;
   font-size: 13px;
   pointer-events: stroke;
-  white-space: pre;
-  max-height: 16px;
 }
 
 .cursor {
@@ -165,7 +164,6 @@ body {
 
 .line-number-container {
   position: relative;
-  width: 3em;
   height: 100em;
 }
 

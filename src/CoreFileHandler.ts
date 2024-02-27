@@ -1,7 +1,74 @@
+enum TokenType {
+  Whitespace = 0,
+  Ident,
+}
+
+interface Token {
+  type: TokenType;
+  lexeme: string;
+}
+
 interface Line {
   value: string;
   prev: Line | null;
   next: Line | null;
+}
+
+export function insertCharacter(line: Line, col: number, ch: string) {
+  line.value = line.value.slice(0, col) + ch + line.value.slice(col);
+}
+
+export function deleteCharacter(line: Line, col: number) {
+  line.value = line.value.slice(0, col - 1) + line.value.slice(col);
+}
+
+export function tokenize(line: Line): Token[] {
+  let tokens: Token[] = [];
+
+  let state = 0;
+  let baseptr = 0;
+
+  for (let i = 0; i < line.value.length; i++) {
+    switch (state) {
+      // WHITESPACE
+      case 0:
+        if (line.value[i] !== " ") {
+          const lexeme = line.value.slice(baseptr, i);
+          if (lexeme.length > 0) {
+            tokens.push({
+              lexeme,
+              type: TokenType.Whitespace,
+            });
+          }
+          baseptr = i;
+          state = 1;
+        }
+        break;
+
+      // ANYTHING ELSE
+      case 1:
+        if (line.value[i] === " ") {
+          const lexeme = line.value.slice(baseptr, i);
+          if (lexeme.length > 0) {
+            tokens.push({
+              lexeme,
+              type: TokenType.Ident,
+            });
+          }
+          baseptr = i;
+          state = 0;
+        }
+        break;
+    }
+  }
+
+  const finalLexeme = line.value.slice(baseptr, line.value.length);
+  tokens.push({
+    lexeme: finalLexeme,
+    type: state === 0 ? TokenType.Whitespace : TokenType.Ident,
+  });
+
+  return tokens;
 }
 
 export class CoreFileHandler {
@@ -68,7 +135,7 @@ export class CoreFileHandler {
     }
   }
 
-  getLineFromRow(row: number): Line | null {
+  getLine(row: number): Line | null {
     let curr = this.head;
     for (let i = 0; i < row; i++) {
       if (!curr) return null;
@@ -77,15 +144,7 @@ export class CoreFileHandler {
     return curr;
   }
 
-  insertCharacter(line: Line, col: number, ch: string) {
-    line.value = line.value.slice(0, col) + ch + line.value.slice(col);
-  }
-
-  deleteCharacter(line: Line, col: number) {
-    line.value = line.value.slice(0, col - 1) + line.value.slice(col);
-  }
-
-  createNewLine(prevLine: Line, breakpoint: number) {
+  createLine(prevLine: Line, breakpoint: number) {
     const newLine: Line = {
       prev: prevLine,
       next: prevLine.next,
@@ -100,17 +159,17 @@ export class CoreFileHandler {
     this.size++;
   }
 
-  removeCurrentLine(currLine: Line): number {
-    if (currLine.next) {
-      currLine.next.prev = currLine.prev;
-      currLine.prev.next = currLine.next;
+  removeLine(line: Line): number {
+    if (line.next) {
+      line.next.prev = line.prev;
+      line.prev.next = line.next;
     } else {
-      currLine.prev.next = null;
+      line.prev.next = null;
     }
 
-    const newColPos = currLine.prev.value.length;
+    const newColPos = line.prev.value.length;
 
-    currLine.prev.value += currLine.value;
+    line.prev.value += line.value;
 
     this.size--;
 
