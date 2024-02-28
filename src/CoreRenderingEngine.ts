@@ -1,7 +1,6 @@
 import { CoreFileHandler, insertCharacter, deleteCharacter, tokenize } from "./CoreFileHandler";
 
 // TODO: Bug with creating new line when the last line is visible after rendering all viewport lines.
-// TODO: Start implementing syntax highlighting.
 
 const LINE_HEIGHT = 16;
 
@@ -242,7 +241,6 @@ export class CoreRenderingEngine {
       const [lineNumberContainer, lineContainer] = this.renderNewLine(row);
 
       const textEl = document.createElement("span");
-      textEl.className = "default-line-text";
       textEl.textContent = currLine.value;
 
       lineContainer.appendChild(textEl);
@@ -260,15 +258,12 @@ export class CoreRenderingEngine {
 
   renderNewLine(row: number): [HTMLElement, HTMLElement] {
     const lineContainer = document.createElement("div");
-    lineContainer.className = "line";
     lineContainer.style.top = `${row}em`;
 
     const lineNumberContainer = document.createElement("div");
-    lineNumberContainer.className = "line-number";
     lineNumberContainer.style.top = `${row}em`;
 
     const lineNumberValue = document.createElement("div");
-    lineNumberValue.className = "line-number-value";
     lineNumberValue.textContent = `${row + 1}`;
 
     lineNumberContainer.appendChild(lineNumberValue);
@@ -302,10 +297,10 @@ export class CoreRenderingEngine {
     return [lineNumberContainer, lineContainer];
   }
 
-  // will render excess <spans> than what is needed but will reduce on the amount of DOM operations by a lot
-  renderTokens(line: Line, tokenWrapper: HTMLElement) {
+  // TODO: reduce garbage being generated
+  // will render more <spans> than what is needed but will reduce on the amount of DOM operations by a lot
+  private renderTokens(line: Line, tokenWrapper: HTMLElement) {
     const tokens: Token[] = tokenize(line);
-    let fragment = new DocumentFragment();
 
     const children = tokenWrapper.children;
     for (let i = 0; i < children.length; i++) {
@@ -321,9 +316,11 @@ export class CoreRenderingEngine {
     }
 
     if (tokens.length > children.length) {
+      const fragment = new DocumentFragment();
+
       for (let i = children.length; i < tokens.length; i++) {
         const tokenEl = document.createElement("span");
-        tokenEl.className = "default-line-text";
+        tokenEl.style.fontSize = "13px";
         tokenEl.style.color = tokens[i].type == TokenType.Ident ? "#91CCEB" : "";
         tokenEl.textContent = tokens[i].lexeme;
         fragment.appendChild(tokenEl);
@@ -357,6 +354,7 @@ export class CoreRenderingEngine {
 
         const tokenWrapper = document.createElement("span");
         tokenWrapper.style.position = "absolute";
+        tokenWrapper.style.height = "16px";
         this.renderTokens(curr, tokenWrapper);
 
         lineContainer.appendChild(tokenWrapper);
@@ -480,7 +478,10 @@ export class CoreRenderingEngine {
         case "Backspace":
           if (this.col > 0) {
             deleteCharacter(this.cursor.line, this.col);
-            this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
+            this.renderTokens(
+              this.cursor.line,
+              this.cursor.lineEl.firstElementChild as HTMLElement
+            );
             this.navigateLeft();
           } else {
             const snapTo = this.file.removeLine(this.cursor.line);
@@ -513,7 +514,7 @@ export class CoreRenderingEngine {
 
         default:
           insertCharacter(this.cursor.line, this.col, e.key);
-          this.cursor.cursorEl.previousElementSibling.textContent = this.cursor.line.value;
+          this.renderTokens(this.cursor.line, this.cursor.lineEl.firstElementChild as HTMLElement);
           this.navigateRight();
       }
     };

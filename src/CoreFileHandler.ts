@@ -36,7 +36,7 @@ export function tokenize(line: Line): Token[] {
           const lexeme = line.value.slice(baseptr, i);
           if (lexeme.length > 0) {
             tokens.push({
-              lexeme,
+              lexeme: lexeme.replace(/\s/g, "\xa0"),
               type: TokenType.Whitespace,
             });
           }

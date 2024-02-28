@@ -118,35 +118,15 @@ body {
 .editor-container {
   display: flex;
   flex: 1;
-  background-color: #1b1c26;
   overflow: auto;
-}
-
-.line-container {
-  flex: 1;
-  position: relative;
-  cursor: text;
-}
-
-.line {
-  position: absolute;
-  height: 1em;
-  width: 100%;
-}
-
-.default-line-text {
-  display: inline-block;
-  white-space: pre;
-  max-height: 16px;
+  background-color: #1b1c26;
   font-family: "DM Mono", monospace;
-  font-size: 13px;
-  pointer-events: stroke;
 }
 
 .cursor {
   position: absolute;
   width: 1.5px;
-  height: 1em;
+  height: 16px;
   background-color: #0078d4;
   pointer-events: none;
 }
@@ -162,30 +142,24 @@ body {
   cursor: pointer;
 }
 
-.line-number-container {
+.line-container {
+  width: 100%;
   position: relative;
-  height: 100em;
+  cursor: text;
 }
 
-.line-number {
+.line-container > * {
   position: absolute;
-  background-color: #1b1c26;
-  color: #6d7681;
-  font-family: "DM Mono", monospace;
-  height: 1em;
+  height: 16px;
   width: 100%;
 }
 
-.line-number-value {
-  text-align: right;
-  font-size: 13px;
-  margin-right: 1em;
+.line-number-container {
+  position: relative;
+  color: #6d7681;
 }
 
-.highlight {
+.line-number-container > * {
   position: absolute;
-  background-color: rgba(219, 221, 223, 0.1);
-  height: 1em;
-  border-radius: 2px;
-  padding: 1px;
+  height: 16px;
 }
