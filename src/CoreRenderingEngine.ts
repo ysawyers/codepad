@@ -1,4 +1,7 @@
-import { CoreFileHandler, insertCharacter, deleteCharacter, tokenize } from "./CoreFileHandler";
+import { CoreFileHandler, insertCharacter, deleteCharacter } from "./CoreFileHandler";
+import { parseJS } from "./lexer";
+
+// FINDINGS: display: inline-block on tokens are extremely cause crazy rendering issues.
 
 // TODO: Bug with creating new line when the last line is visible after rendering all viewport lines.
 
@@ -54,7 +57,7 @@ export class CoreRenderingEngine {
 
   private visibleLines: RingBuffer<HTMLElement>;
   private visibleLineNumbers: RingBuffer<HTMLElement>;
-  private scopedRegion: Map<HTMLElement, [number, Line]>;
+  private renderedLinesCache: Map<HTMLElement, [number, Line, HTMLElement[]]>;
 
   private viewportHeight: number;
   private scrollOffsetFromTop: number;
@@ -76,7 +79,7 @@ export class CoreRenderingEngine {
     this.colAnchor = this.col;
 
     this.file = new CoreFileHandler(fileText);
-    this.scopedRegion = new Map();
+    this.renderedLinesCache = new Map();
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
     this.editorEl = editorTemplate.content.firstElementChild.cloneNode(true) as HTMLElement;
@@ -217,9 +220,11 @@ export class CoreRenderingEngine {
     for (let i = 0; i < this.visibleLines.size(); i++) {
       const lineEl = this.visibleLines.get(i);
 
-      this.scopedRegion.set(lineEl, [startingRow + i, currLine]);
+      const oldValues = this.renderedLinesCache.get(lineEl);
+      oldValues[0] = startingRow + i;
+      oldValues[1] = currLine;
 
-      lineEl.style.top = `${startingRow + i}em`;
+      lineEl.style.top = `${(startingRow + i) * 16}px`;
       lineEl.firstElementChild.textContent = currLine.value;
 
       if (this.row === startingRow + i) {
@@ -230,46 +235,56 @@ export class CoreRenderingEngine {
       currLine = currLine.next;
     }
 
-    const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
+    // const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
 
-    if (currLine && this.visibleLines.size() < visibleLines) {
-      const lineGroup = document.getElementById("line-group");
-      const lineNumberGroup = document.getElementById("line-number-group");
+    // creating new lines to fill the buffer with enough elements to fit the visible viewport
+    // if (currLine && this.visibleLines.size() < visibleLines) {
+    //   const lineGroup = document.getElementById("line-group");
+    //   const lineNumberGroup = document.getElementById("line-number-group");
 
-      const row = startingRow + this.visibleLines.size();
+    //   const row = startingRow + this.visibleLines.size();
 
-      const [lineNumberContainer, lineContainer] = this.renderNewLine(row);
+    //   const [lineNumberContainer, lineContainer] = this.renderNewLine(row);
 
-      const textEl = document.createElement("span");
-      textEl.textContent = currLine.value;
+    //   const textEl = document.createElement("span");
+    //   textEl.textContent = currLine.value;
 
-      lineContainer.appendChild(textEl);
-      lineGroup.appendChild(lineContainer);
+    //   lineContainer.appendChild(textEl);
+    //   lineGroup.appendChild(lineContainer);
 
-      lineNumberGroup.appendChild(lineNumberContainer);
+    //   lineNumberGroup.appendChild(lineNumberContainer);
 
-      this.scopedRegion.set(lineContainer, [row, currLine]);
-      this.visibleLines.append(lineContainer);
+    //   // TODO
+    //   this.renderedLinesCache.set(lineContainer, [row, currLine, []]);
 
-      lineGroup.style.height = `${this.file.size}em`;
-      lineNumberGroup.style.height = `${this.file.size}em`;
-    }
+    //   const oldValues = this.renderedLinesCache.get(lineContainer);
+    //   oldValues[0] = row;
+    //   oldValues[1] = currLine;
+
+    //   this.visibleLines.append(lineContainer);
+
+    //   lineGroup.style.height = `${this.file.size * 16}px`;
+    //   lineNumberGroup.style.height = `${this.file.size * 16}px`;
+    // }
   }
 
   renderNewLine(row: number): [HTMLElement, HTMLElement] {
-    const lineContainer = document.createElement("div");
-    lineContainer.style.top = `${row}em`;
-
     const lineNumberContainer = document.createElement("div");
-    lineNumberContainer.style.top = `${row}em`;
+    lineNumberContainer.style.width = "100%";
+    lineNumberContainer.style.top = `${row * 16}px`;
 
     const lineNumberValue = document.createElement("div");
+    lineNumberValue.style.fontSize = "12px";
+    lineNumberContainer.style.marginTop = "1.5px";
     lineNumberValue.textContent = `${row + 1}`;
+
+    const lineContainer = document.createElement("div");
+    lineContainer.style.top = `${row * 16}px`;
 
     lineNumberContainer.appendChild(lineNumberValue);
 
     lineContainer.addEventListener("mousedown", (e) => {
-      const [row, line] = this.scopedRegion.get(lineContainer);
+      const [row, line, _] = this.renderedLinesCache.get(lineContainer);
 
       const distanceFromLeft = e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
 
@@ -297,36 +312,26 @@ export class CoreRenderingEngine {
     return [lineNumberContainer, lineContainer];
   }
 
-  // TODO: reduce garbage being generated
-  // will render more <spans> than what is needed but will reduce on the amount of DOM operations by a lot
+  // memory tradeoff for less GC + DOM manip.
   private renderTokens(line: Line, tokenWrapper: HTMLElement) {
-    const tokens: Token[] = tokenize(line);
+    const renderedTokens = this.renderedLinesCache.get(tokenWrapper.parentElement)[2];
 
-    const children = tokenWrapper.children;
-    for (let i = 0; i < children.length; i++) {
-      if (i < tokens.length) {
-        // @ts-ignore
-        children[i].style.color = tokens[i].type == TokenType.Ident ? "#91CCEB" : "";
-        children[i].textContent = tokens[i].lexeme;
-      } else {
-        // @ts-ignore
-        children[i].style.color = "";
-        children[i].textContent = "";
-      }
-    }
-
-    if (tokens.length > children.length) {
-      const fragment = new DocumentFragment();
-
-      for (let i = children.length; i < tokens.length; i++) {
+    let currTok = 0;
+    let pt = 0;
+    while (pt < line.value.length) {
+      if (currTok >= renderedTokens.length) {
         const tokenEl = document.createElement("span");
         tokenEl.style.fontSize = "13px";
-        tokenEl.style.color = tokens[i].type == TokenType.Ident ? "#91CCEB" : "";
-        tokenEl.textContent = tokens[i].lexeme;
-        fragment.appendChild(tokenEl);
+        tokenWrapper.appendChild(tokenEl);
+        renderedTokens.push(tokenEl);
       }
+      pt = parseJS(pt, line.value, renderedTokens[currTok]);
+      // console.log(pt, line.value.length, line.value[pt]);
+      currTok++;
+    }
 
-      tokenWrapper.append(fragment);
+    for (let i = currTok + 1; i < renderedTokens.length; i++) {
+      renderedTokens[i].textContent = "";
     }
   }
 
@@ -334,10 +339,10 @@ export class CoreRenderingEngine {
     document.getElementById("workspace-group").appendChild(this.editorEl);
 
     const lineGroup = document.getElementById("line-group");
-    lineGroup.style.height = `${this.file.size}em`;
+    lineGroup.style.height = `${this.file.size * 16}px`;
 
     const lineNumberGroup = document.getElementById("line-number-group");
-    lineNumberGroup.style.height = `${this.file.size}em`;
+    lineNumberGroup.style.height = `${this.file.size * 16}px`;
     lineNumberGroup.style.width = `${this.file.size.toString().length * 7.8 + 30}px`;
 
     const visibleLines = (Math.ceil(this.viewportHeight / LINE_HEIGHT) * LINE_HEIGHT) / LINE_HEIGHT;
@@ -355,15 +360,17 @@ export class CoreRenderingEngine {
         const tokenWrapper = document.createElement("span");
         tokenWrapper.style.position = "absolute";
         tokenWrapper.style.height = "16px";
+
+        // @ts-ignore
+        this.renderedLinesCache.set(lineContainer, [i, curr, []]);
+        lineContainer.appendChild(tokenWrapper);
         this.renderTokens(curr, tokenWrapper);
 
-        lineContainer.appendChild(tokenWrapper);
         lineGroup.appendChild(lineContainer);
         lineNumberGroup.appendChild(lineNumberContainer);
 
         visibleLinesData.push(lineContainer);
         visibleLineNumbersData.push(lineNumberContainer);
-        this.scopedRegion.set(lineContainer, [i, curr]);
 
         curr = curr.next;
       }
@@ -398,7 +405,7 @@ export class CoreRenderingEngine {
         const numLinesToRecompute = Math.ceil((0 - firstVisibleLineOffset) / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
-          const [row, line] = this.scopedRegion.get(this.visibleLines.getTailRef());
+          const [row, line, _] = this.renderedLinesCache.get(this.visibleLines.getTailRef());
 
           // no more lines to render at the bottom
           if (!line.next) break;
@@ -407,11 +414,13 @@ export class CoreRenderingEngine {
           const oldLineEl = this.visibleLines.getHeadRef();
           const oldLineNumberEl = this.visibleLineNumbers.getHeadRef();
 
-          oldLineEl.style.top = `${row + 1}em`;
-          this.renderTokens(line.next, oldLineEl.firstElementChild as HTMLElement);
-          this.scopedRegion.set(oldLineEl, [row + 1, line.next]);
+          oldLineEl.style.top = `${(row + 1) * 16}px`;
 
-          oldLineNumberEl.style.top = `${row + 1}em`;
+          const oldValues = this.renderedLinesCache.get(oldLineEl);
+          oldValues[0] = row + 1;
+          oldValues[1] = line.next;
+
+          oldLineNumberEl.style.top = `${(row + 1) * 16}px`;
           oldLineNumberEl.firstElementChild.textContent = `${row + 1}`;
 
           this.visibleLines.moveForward();
@@ -421,7 +430,7 @@ export class CoreRenderingEngine {
         const numLinesToRecompute = Math.ceil(lastVisibleLineOffset / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
-          const [row, line] = this.scopedRegion.get(this.visibleLines.getHeadRef());
+          const [row, line, _] = this.renderedLinesCache.get(this.visibleLines.getHeadRef());
 
           // no more lines to render at the top
           if (!line.prev) break;
@@ -430,11 +439,13 @@ export class CoreRenderingEngine {
           const oldLineEl = this.visibleLines.getTailRef();
           const oldLineNumberEl = this.visibleLineNumbers.getTailRef();
 
-          oldLineEl.style.top = `${row - 1}em`;
-          this.renderTokens(line.prev, oldLineEl.firstElementChild as HTMLElement);
-          this.scopedRegion.set(oldLineEl, [row - 1, line.prev]);
+          oldLineEl.style.top = `${(row - 1) * 16}px`;
 
-          oldLineNumberEl.style.top = `${row - 1}em`;
+          const oldValues = this.renderedLinesCache.get(oldLineEl);
+          oldValues[0] = row - 1;
+          oldValues[1] = line.prev;
+
+          oldLineNumberEl.style.top = `${(row - 1) * 16}px`;
           oldLineNumberEl.firstElementChild.textContent = `${row}`;
 
           this.visibleLines.moveBackward();
@@ -478,15 +489,13 @@ export class CoreRenderingEngine {
         case "Backspace":
           if (this.col > 0) {
             deleteCharacter(this.cursor.line, this.col);
-            this.renderTokens(
-              this.cursor.line,
-              this.cursor.lineEl.firstElementChild as HTMLElement
-            );
+            const tokenWrapper = this.cursor.lineEl.firstElementChild as HTMLElement;
+            this.renderTokens(this.cursor.line, tokenWrapper);
             this.navigateLeft();
           } else {
             const snapTo = this.file.removeLine(this.cursor.line);
-            lineGroup.style.height = `${this.file.size}em`;
-            lineNumberGroup.style.height = `${this.file.size}em`;
+            lineGroup.style.height = `${this.file.size * 16}px`;
+            lineNumberGroup.style.height = `${this.file.size * 16}px`;
             this.updateColWithAnchor(snapTo);
             this.navigateUp();
             this.flushRenderingQueueAndRemount();
@@ -504,8 +513,8 @@ export class CoreRenderingEngine {
           this.file.createLine(this.cursor.line, this.col);
           // this.flushRenderingQueueAndRemount();
 
-          lineGroup.style.height = `${this.file.size + 1}em`;
-          lineNumberGroup.style.height = `${this.file.size + 1}em`;
+          lineGroup.style.height = `${(this.file.size + 1) * 16}px`;
+          lineNumberGroup.style.height = `${(this.file.size + 1) * 16}px`;
 
           // this.updateColWithAnchor(0);
           // this.navigateDown();
@@ -514,7 +523,8 @@ export class CoreRenderingEngine {
 
         default:
           insertCharacter(this.cursor.line, this.col, e.key);
-          this.renderTokens(this.cursor.line, this.cursor.lineEl.firstElementChild as HTMLElement);
+          const tokenWrapper = this.cursor.lineEl.firstElementChild as HTMLElement;
+          this.renderTokens(this.cursor.line, tokenWrapper);
           this.navigateRight();
       }
     };
@@ -527,6 +537,10 @@ export class CoreRenderingEngine {
     document.removeEventListener("keydown", this.keydownEventListener);
     this.throttledScrollEventListenerCleanup();
   }
+}
+
+class Lexer {
+  constructor(lang: string) {}
 }
 
 class RingBuffer<T> {

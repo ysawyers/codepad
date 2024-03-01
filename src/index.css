@@ -157,6 +157,12 @@ body {
 .line-number-container {
   position: relative;
   color: #6d7681;
+  text-align: right;
+  margin-right: 20px;
+}
+
+.line-number-container > * {
+  width: 100%;
 }
 
 .line-number-container > * {

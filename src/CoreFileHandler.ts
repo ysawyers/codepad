@@ -22,55 +22,6 @@ export function deleteCharacter(line: Line, col: number) {
   line.value = line.value.slice(0, col - 1) + line.value.slice(col);
 }
 
-export function tokenize(line: Line): Token[] {
-  let tokens: Token[] = [];
-
-  let state = 0;
-  let baseptr = 0;
-
-  for (let i = 0; i < line.value.length; i++) {
-    switch (state) {
-      // WHITESPACE
-      case 0:
-        if (line.value[i] !== " ") {
-          const lexeme = line.value.slice(baseptr, i);
-          if (lexeme.length > 0) {
-            tokens.push({
-              lexeme: lexeme.replace(/\s/g, "\xa0"),
-              type: TokenType.Whitespace,
-            });
-          }
-          baseptr = i;
-          state = 1;
-        }
-        break;
-
-      // ANYTHING ELSE
-      case 1:
-        if (line.value[i] === " ") {
-          const lexeme = line.value.slice(baseptr, i);
-          if (lexeme.length > 0) {
-            tokens.push({
-              lexeme,
-              type: TokenType.Ident,
-            });
-          }
-          baseptr = i;
-          state = 0;
-        }
-        break;
-    }
-  }
-
-  const finalLexeme = line.value.slice(baseptr, line.value.length);
-  tokens.push({
-    lexeme: finalLexeme,
-    type: state === 0 ? TokenType.Whitespace : TokenType.Ident,
-  });
-
-  return tokens;
-}
-
 export class CoreFileHandler {
   head: Line;
   size: number;
