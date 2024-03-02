@@ -142,9 +142,10 @@ body {
 }
 
 .line-container {
-  width: 100%;
   position: relative;
+  width: 100%;
   cursor: text;
+  font-size: 13px;
 }
 
 .line-container > * {
@@ -158,13 +159,11 @@ body {
   color: #6d7681;
   text-align: right;
   margin-right: 20px;
-}
-
-.line-number-container > * {
-  width: 100%;
+  font-size: 12px;
 }
 
 .line-number-container > * {
   position: absolute;
   height: 16px;
+  width: 100%;
 }

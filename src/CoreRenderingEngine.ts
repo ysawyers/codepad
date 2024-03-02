@@ -3,6 +3,8 @@ import { parseJS } from "./lexer";
 
 // FINDINGS: display: inline-block on tokens are extremely cause crazy rendering issues.
 
+// FINDINGS: absolute with translate() will be much faster since paint is deferred on the GPU layer
+
 const LINE_HEIGHT = 16;
 
 enum TokenType {
@@ -269,16 +271,13 @@ export class CoreRenderingEngine {
 
   renderNewLine(row: number): [HTMLElement, HTMLElement] {
     const lineNumberContainer = document.createElement("div");
-    lineNumberContainer.style.width = "100%";
-    lineNumberContainer.style.top = `${row * 16}px`;
+    lineNumberContainer.style.transform = `translate3d(0px, ${row * 16}px, 0px)`;
 
     const lineNumberValue = document.createElement("div");
-    lineNumberValue.style.fontSize = "12px";
-    lineNumberContainer.style.marginTop = "1.5px";
     lineNumberValue.textContent = `${row + 1}`;
 
     const lineContainer = document.createElement("div");
-    lineContainer.style.top = `${row * 16}px`;
+    lineContainer.style.transform = `translate3d(0px, ${row * 16}px, 0px)`;
 
     lineNumberContainer.appendChild(lineNumberValue);
 
@@ -320,16 +319,16 @@ export class CoreRenderingEngine {
     while (pt < line.value.length) {
       if (currTok >= renderedTokens.length) {
         const tokenEl = document.createElement("span");
-        tokenEl.style.fontSize = "13px";
         tokenWrapper.appendChild(tokenEl);
         renderedTokens.push(tokenEl);
       }
+
       pt = parseJS(pt, line.value, renderedTokens[currTok]);
       // console.log(pt, line.value.length, line.value[pt]);
       currTok++;
     }
 
-    for (let i = currTok + 1; i < renderedTokens.length; i++) {
+    for (let i = currTok; i < renderedTokens.length; i++) {
       renderedTokens[i].textContent = "";
     }
   }
@@ -358,7 +357,7 @@ export class CoreRenderingEngine {
 
         const tokenWrapper = document.createElement("span");
         tokenWrapper.style.position = "absolute";
-        tokenWrapper.style.height = "16px";
+        tokenWrapper.style.height = `${LINE_HEIGHT}px`;
 
         // @ts-ignore
         this.renderedLinesCache.set(lineContainer, [i, curr, []]);
@@ -416,13 +415,14 @@ export class CoreRenderingEngine {
           const oldLineEl = this.visibleLines.getHeadRef();
           const oldLineNumberEl = this.visibleLineNumbers.getHeadRef();
 
-          oldLineEl.style.top = `${(row + 1) * 16}px`;
-
           const oldValues = this.renderedLinesCache.get(oldLineEl);
           oldValues[0] = row + 1;
           oldValues[1] = line.next;
 
-          oldLineNumberEl.style.top = `${(row + 1) * 16}px`;
+          oldLineEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
+          this.renderTokens(oldValues[1], oldLineEl.firstElementChild as HTMLElement);
+
+          oldLineNumberEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row + 1}`;
 
           this.visibleLines.moveForward();
@@ -441,13 +441,14 @@ export class CoreRenderingEngine {
           const oldLineEl = this.visibleLines.getTailRef();
           const oldLineNumberEl = this.visibleLineNumbers.getTailRef();
 
-          oldLineEl.style.top = `${(row - 1) * 16}px`;
-
           const oldValues = this.renderedLinesCache.get(oldLineEl);
           oldValues[0] = row - 1;
           oldValues[1] = line.prev;
 
-          oldLineNumberEl.style.top = `${(row - 1) * 16}px`;
+          oldLineEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
+          this.renderTokens(oldValues[1], oldLineEl.firstElementChild as HTMLElement);
+
+          oldLineNumberEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row}`;
 
           this.visibleLines.moveBackward();

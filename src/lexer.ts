@@ -71,7 +71,7 @@ export function parseJS(pt: number, line: string, textEl: HTMLElement): number {
           pt++;
         }
         textEl.textContent = lexeme;
-        // textEl.style.color = "";
+        textEl.style.color = "";
       }
       break;
 
