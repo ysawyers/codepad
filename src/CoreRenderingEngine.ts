@@ -66,6 +66,7 @@ export class CoreRenderingEngine {
 
   private file: CoreFileHandler;
 
+  private scrollingRender: (e: Event) => void;
   private keydownEventListener: (e: KeyboardEvent) => void;
   private throttledScrollEventListenerCleanup: () => void;
 
@@ -386,8 +387,7 @@ export class CoreRenderingEngine {
       });
     }
 
-    const cleanup = throttledEventListener(this.editorEl, "scroll", (e) => {
-      // causes reflow (NO WAY AROUND USING SCROLL TOP)
+    this.scrollingRender = () => {
       const newScrollOffset = this.editorEl.scrollTop;
       const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
       this.scrollOffsetFromTop = newScrollOffset;
@@ -395,15 +395,16 @@ export class CoreRenderingEngine {
       const firstLineEl = this.visibleLines.getHeadRef();
       const lastLineEl = this.visibleLines.getTailRef();
 
-      // causes reflow so lets calculate the offset as well
-      const firstVisibleLineOffset = firstLineEl.offsetTop - this.scrollOffsetFromTop + 16;
+      const firstVisibleLineOffset =
+        this.scrollOffsetFromTop - (this.renderedLinesCache.get(firstLineEl)[0] * 16 + 16);
 
-      // causes reflow so lets calculate the offset as well
       const lastVisibleLineOffset =
-        lastLineEl.offsetTop - this.scrollOffsetFromTop - this.viewportHeight + 16;
+        this.renderedLinesCache.get(lastLineEl)[0] * 16 +
+        16 -
+        (this.scrollOffsetFromTop + this.viewportHeight);
 
-      if (isScrollingDown && firstVisibleLineOffset < 0) {
-        const numLinesToRecompute = Math.ceil((0 - firstVisibleLineOffset) / LINE_HEIGHT);
+      if (isScrollingDown && firstVisibleLineOffset > 0) {
+        const numLinesToRecompute = Math.ceil(firstVisibleLineOffset / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
           const [row, line, _] = this.renderedLinesCache.get(this.visibleLines.getTailRef());
@@ -466,7 +467,9 @@ export class CoreRenderingEngine {
         this.cursor.cursorEl.remove();
         this.cursor.visibleOnDOM = false;
       }
-    });
+    };
+
+    const cleanup = throttledEventListener(this.editorEl, "scroll", this.scrollingRender);
     this.throttledScrollEventListenerCleanup = cleanup;
 
     this.keydownEventListener = (e: KeyboardEvent) => {
