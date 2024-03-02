@@ -118,8 +118,7 @@ body {
 .editor-container {
   display: flex;
   flex: 1;
-  overflow: auto;
-  background-color: #1b1c26;
+  overflow-y: auto;
   font-family: "DM Mono", monospace;
 }
 

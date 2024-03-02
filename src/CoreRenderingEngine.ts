@@ -3,8 +3,6 @@ import { parseJS } from "./lexer";
 
 // FINDINGS: display: inline-block on tokens are extremely cause crazy rendering issues.
 
-// TODO: Bug with creating new line when the last line is visible after rendering all viewport lines.
-
 const LINE_HEIGHT = 16;
 
 enum TokenType {
@@ -388,7 +386,8 @@ export class CoreRenderingEngine {
       });
     }
 
-    const cleanup = throttledEventListener(this.editorEl, "scroll", () => {
+    const cleanup = throttledEventListener(this.editorEl, "scroll", (e) => {
+      // causes reflow (NO WAY AROUND USING SCROLL TOP)
       const newScrollOffset = this.editorEl.scrollTop;
       const isScrollingDown = newScrollOffset > this.scrollOffsetFromTop;
       this.scrollOffsetFromTop = newScrollOffset;
@@ -396,8 +395,10 @@ export class CoreRenderingEngine {
       const firstLineEl = this.visibleLines.getHeadRef();
       const lastLineEl = this.visibleLines.getTailRef();
 
+      // causes reflow so lets calculate the offset as well
       const firstVisibleLineOffset = firstLineEl.offsetTop - this.scrollOffsetFromTop + 16;
 
+      // causes reflow so lets calculate the offset as well
       const lastVisibleLineOffset =
         lastLineEl.offsetTop - this.scrollOffsetFromTop - this.viewportHeight + 16;
 
@@ -537,10 +538,6 @@ export class CoreRenderingEngine {
     document.removeEventListener("keydown", this.keydownEventListener);
     this.throttledScrollEventListenerCleanup();
   }
-}
-
-class Lexer {
-  constructor(lang: string) {}
 }
 
 class RingBuffer<T> {
