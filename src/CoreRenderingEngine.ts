@@ -57,7 +57,7 @@ export class CoreRenderingEngine {
 
   private visibleLines: RingBuffer<HTMLElement>;
   private visibleLineNumbers: RingBuffer<HTMLElement>;
-  private renderedLinesCache: Map<HTMLElement, [number, Line, HTMLElement[]]>;
+  private renderedLinesCache: Map<HTMLElement, [number, Line]>;
 
   private viewportHeight: number;
   private scrollOffsetFromTop: number;
@@ -282,7 +282,7 @@ export class CoreRenderingEngine {
     lineNumberContainer.appendChild(lineNumberValue);
 
     lineContainer.addEventListener("mousedown", (e) => {
-      const [row, line, _] = this.renderedLinesCache.get(lineContainer);
+      const [row, line] = this.renderedLinesCache.get(lineContainer);
 
       const distanceFromLeft = e.clientX - lineContainer.parentElement.getBoundingClientRect().left;
 
@@ -310,27 +310,29 @@ export class CoreRenderingEngine {
     return [lineNumberContainer, lineContainer];
   }
 
+  // try deleting the whole tokenWrapper and then creating a new one in document fragment and putting that (2) ??
+
   // memory tradeoff for less GC + DOM manip.
-  private renderTokens(line: Line, tokenWrapper: HTMLElement) {
-    const renderedTokens = this.renderedLinesCache.get(tokenWrapper.parentElement)[2];
+  private renderTokens(lineVal: string, lineEl: HTMLElement) {
+    // const renderedTokens = this.renderedLinesCache.get(tokenWrapper.parentElement)[2];
+    // let currTok = 0;
+    // let pt = 0;
+    // while (pt < line.value.length) {
+    //   if (currTok >= renderedTokens.length) {
+    //     const tokenEl = document.createElement("span");
+    //     tokenWrapper.appendChild(tokenEl);
+    //     renderedTokens.push(tokenEl);
+    //   }
+    //   pt = parseJS(pt, line.value, renderedTokens[currTok]);
+    //   // console.log(pt, line.value.length, line.value[pt]);
+    //   currTok++;
+    // }
+    // for (let i = currTok; i < renderedTokens.length; i++) {
+    //   renderedTokens[i].textContent = "";
+    // }
 
-    let currTok = 0;
-    let pt = 0;
-    while (pt < line.value.length) {
-      if (currTok >= renderedTokens.length) {
-        const tokenEl = document.createElement("span");
-        tokenWrapper.appendChild(tokenEl);
-        renderedTokens.push(tokenEl);
-      }
-
-      pt = parseJS(pt, line.value, renderedTokens[currTok]);
-      // console.log(pt, line.value.length, line.value[pt]);
-      currTok++;
-    }
-
-    for (let i = currTok; i < renderedTokens.length; i++) {
-      renderedTokens[i].textContent = "";
-    }
+    const tokenWrapper = "<span>" + parseJS(lineVal) + "</span>";
+    lineEl.innerHTML += tokenWrapper;
   }
 
   foreground() {
@@ -355,14 +357,9 @@ export class CoreRenderingEngine {
 
         const [lineNumberContainer, lineContainer] = this.renderNewLine(i);
 
-        const tokenWrapper = document.createElement("span");
-        tokenWrapper.style.position = "absolute";
-        tokenWrapper.style.height = `${LINE_HEIGHT}px`;
-
         // @ts-ignore
         this.renderedLinesCache.set(lineContainer, [i, curr, []]);
-        lineContainer.appendChild(tokenWrapper);
-        this.renderTokens(curr, tokenWrapper);
+        this.renderTokens(curr.value, lineContainer);
 
         lineGroup.appendChild(lineContainer);
         lineNumberGroup.appendChild(lineNumberContainer);
@@ -406,7 +403,7 @@ export class CoreRenderingEngine {
         const numLinesToRecompute = Math.ceil(firstVisibleLineOffset / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
-          const [row, line, _] = this.renderedLinesCache.get(this.visibleLines.getTailRef());
+          const [row, line] = this.renderedLinesCache.get(this.visibleLines.getTailRef());
 
           // no more lines to render at the bottom
           if (!line.next) break;
@@ -420,7 +417,7 @@ export class CoreRenderingEngine {
           oldValues[1] = line.next;
 
           oldLineEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
-          this.renderTokens(oldValues[1], oldLineEl.firstElementChild as HTMLElement);
+          this.renderTokens(oldValues[1].value, oldLineEl);
 
           oldLineNumberEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row + 1}`;
@@ -432,7 +429,7 @@ export class CoreRenderingEngine {
         const numLinesToRecompute = Math.ceil(lastVisibleLineOffset / LINE_HEIGHT);
 
         for (let i = 0; i < numLinesToRecompute; i++) {
-          const [row, line, _] = this.renderedLinesCache.get(this.visibleLines.getHeadRef());
+          const [row, line] = this.renderedLinesCache.get(this.visibleLines.getHeadRef());
 
           // no more lines to render at the top
           if (!line.prev) break;
@@ -446,7 +443,7 @@ export class CoreRenderingEngine {
           oldValues[1] = line.prev;
 
           oldLineEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
-          this.renderTokens(oldValues[1], oldLineEl.firstElementChild as HTMLElement);
+          this.renderTokens(oldValues[1].value, oldLineEl);
 
           oldLineNumberEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row}`;
