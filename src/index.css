@@ -120,6 +120,7 @@ body {
   flex: 1;
   overflow-y: auto;
   font-family: "DM Mono", monospace;
+  color: white;
 }
 
 .cursor {
@@ -166,4 +167,41 @@ body {
   position: absolute;
   height: 16px;
   width: 100%;
+}
+
+.keyword {
+  /* purple */
+  color: #9333ea;
+}
+
+.ident {
+  /* red */
+  color: #f43f5e;
+}
+
+.comment {
+  color: grey;
+}
+
+.literal {
+  color: #fb923c;
+}
+
+.str-literal {
+  color: green;
+}
+
+.bracket-t1 {
+  /* orange */
+  color: #fb923c;
+}
+
+.bracket-t2 {
+  /* purple */
+  color: #9333ea;
+}
+
+.operator {
+  /* blue */
+  color: #60a5fa;
 }

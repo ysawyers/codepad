@@ -1,4 +1,4 @@
-import { CoreRenderingEngine } from "./CoreRenderingEngine";
+import { EditorCursor } from "./editor/cursor";
 
 interface FileOrFolder {
   path: string | null;
@@ -96,12 +96,12 @@ export class Enviornment {
 
   landingEl: HTMLElement;
 
-  files: Map<HTMLElement, [CoreRenderingEngine, DirNode | null]>;
+  files: Map<HTMLElement, [EditorCursor, DirNode | null]>;
   foregroundedTab: HTMLElement | null;
   tabPrecedence: HTMLElement[];
 
   constructor() {
-    this.files = new Map<HTMLElement, [CoreRenderingEngine, DirNode]>();
+    this.files = new Map<HTMLElement, [EditorCursor, DirNode]>();
     this.tabPrecedence = [];
     this.foregroundedTab = null;
 
@@ -172,7 +172,7 @@ export class Enviornment {
 
     document.getElementById("tab-group").appendChild(newForegroundedTab);
 
-    const file = new CoreRenderingEngine(0, 0, data);
+    const file = new EditorCursor(0, 0, data);
     this.files.set(newForegroundedTab, [file, dirNode]);
     file.foreground();
     this.tabPrecedence.push(newForegroundedTab);

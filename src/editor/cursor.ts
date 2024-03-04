@@ -1,9 +1,5 @@
-import { CoreFileHandler, insertCharacter, deleteCharacter } from "./CoreFileHandler";
-import { parseJS } from "./lexer";
-
-// FINDINGS: display: inline-block on tokens are extremely cause crazy rendering issues.
-
-// FINDINGS: absolute with translate() will be much faster since paint is deferred on the GPU layer
+import { EditorState, insertCharacter, deleteCharacter } from "./state";
+import { renderTokensJS } from "./syntax/js";
 
 const LINE_HEIGHT = 16;
 
@@ -45,7 +41,7 @@ function throttledEventListener(
   return () => el.removeEventListener(ev, f);
 }
 
-export class CoreRenderingEngine {
+export class EditorCursor {
   private editorEl: HTMLElement;
 
   private cursor: {
@@ -66,7 +62,7 @@ export class CoreRenderingEngine {
   private col: number;
   private colAnchor: number;
 
-  private file: CoreFileHandler;
+  private file: EditorState;
 
   private scrollingRender: (e: Event) => void;
   private keydownEventListener: (e: KeyboardEvent) => void;
@@ -79,7 +75,7 @@ export class CoreRenderingEngine {
     this.col = col;
     this.colAnchor = this.col;
 
-    this.file = new CoreFileHandler(fileText);
+    this.file = new EditorState(fileText);
     this.renderedLinesCache = new Map();
 
     const editorTemplate = document.getElementById("editor") as HTMLTemplateElement;
@@ -310,31 +306,6 @@ export class CoreRenderingEngine {
     return [lineNumberContainer, lineContainer];
   }
 
-  // try deleting the whole tokenWrapper and then creating a new one in document fragment and putting that (2) ??
-
-  // memory tradeoff for less GC + DOM manip.
-  private renderTokens(lineVal: string, lineEl: HTMLElement) {
-    // const renderedTokens = this.renderedLinesCache.get(tokenWrapper.parentElement)[2];
-    // let currTok = 0;
-    // let pt = 0;
-    // while (pt < line.value.length) {
-    //   if (currTok >= renderedTokens.length) {
-    //     const tokenEl = document.createElement("span");
-    //     tokenWrapper.appendChild(tokenEl);
-    //     renderedTokens.push(tokenEl);
-    //   }
-    //   pt = parseJS(pt, line.value, renderedTokens[currTok]);
-    //   // console.log(pt, line.value.length, line.value[pt]);
-    //   currTok++;
-    // }
-    // for (let i = currTok; i < renderedTokens.length; i++) {
-    //   renderedTokens[i].textContent = "";
-    // }
-
-    const tokenWrapper = "<span>" + parseJS(lineVal) + "</span>";
-    lineEl.innerHTML += tokenWrapper;
-  }
-
   foreground() {
     document.getElementById("workspace-group").appendChild(this.editorEl);
 
@@ -358,8 +329,8 @@ export class CoreRenderingEngine {
         const [lineNumberContainer, lineContainer] = this.renderNewLine(i);
 
         // @ts-ignore
-        this.renderedLinesCache.set(lineContainer, [i, curr, []]);
-        this.renderTokens(curr.value, lineContainer);
+        this.renderedLinesCache.set(lineContainer, [i, curr]);
+        renderTokensJS(curr.value, lineContainer);
 
         lineGroup.appendChild(lineContainer);
         lineNumberGroup.appendChild(lineNumberContainer);
@@ -417,7 +388,10 @@ export class CoreRenderingEngine {
           oldValues[1] = line.next;
 
           oldLineEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
-          this.renderTokens(oldValues[1].value, oldLineEl);
+          oldLineEl.firstElementChild.textContent = oldValues[1].value;
+
+          // TODO: Do more research
+          // renderTokensJS(oldValues[1].value, oldLineEl);
 
           oldLineNumberEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row + 1}`;
@@ -443,7 +417,10 @@ export class CoreRenderingEngine {
           oldValues[1] = line.prev;
 
           oldLineEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
-          this.renderTokens(oldValues[1].value, oldLineEl);
+          oldLineEl.firstElementChild.textContent = oldValues[1].value;
+
+          // TODO: Do more research
+          // renderTokensJS(oldValues[1].value, oldLineEl);
 
           oldLineNumberEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row}`;
@@ -468,7 +445,6 @@ export class CoreRenderingEngine {
     };
 
     const cleanup = throttledEventListener(this.editorEl, "scroll", this.scrollingRender);
-    this.throttledScrollEventListenerCleanup = cleanup;
 
     this.keydownEventListener = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -492,7 +468,7 @@ export class CoreRenderingEngine {
           if (this.col > 0) {
             deleteCharacter(this.cursor.line, this.col);
             const tokenWrapper = this.cursor.lineEl.firstElementChild as HTMLElement;
-            this.renderTokens(this.cursor.line, tokenWrapper);
+            // this.renderTokens(this.cursor.line.value, tokenWrapper);
             this.navigateLeft();
           } else {
             const snapTo = this.file.removeLine(this.cursor.line);
@@ -526,7 +502,7 @@ export class CoreRenderingEngine {
         default:
           insertCharacter(this.cursor.line, this.col, e.key);
           const tokenWrapper = this.cursor.lineEl.firstElementChild as HTMLElement;
-          this.renderTokens(this.cursor.line, tokenWrapper);
+          // this.renderTokens(this.cursor.line, tokenWrapper);
           this.navigateRight();
       }
     };

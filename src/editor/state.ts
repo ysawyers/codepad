@@ -22,7 +22,7 @@ export function deleteCharacter(line: Line, col: number) {
   line.value = line.value.slice(0, col - 1) + line.value.slice(col);
 }
 
-export class CoreFileHandler {
+export class EditorState {
   head: Line;
   size: number;
 
