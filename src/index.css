@@ -205,3 +205,7 @@ body {
   /* blue */
   color: #60a5fa;
 }
+
+.fast {
+  transform: translate3d(0, 0, 0);
+}

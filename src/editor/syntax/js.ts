@@ -42,16 +42,16 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
 
       const lexeme = lineVal.slice(basept, pt);
       if (JSKeywords.has(lexeme)) {
-        tokens += '<span class="keyword">' + lexeme + "</span>";
+        tokens += "<span>" + lexeme + "</span>";
       } else {
-        tokens += '<span class="ident">' + lexeme + "</span>";
+        tokens += "<span>" + lexeme + "</span>";
       }
     }
 
     if (isNum(lineVal[basept])) {
       while (isNum(lineVal[pt])) pt++;
       const lexeme = lineVal.slice(basept, pt);
-      tokens += '<span class="literal">' + lexeme + "</span>";
+      tokens += "<span>" + lexeme + "</span>";
     }
 
     switch (lineVal[basept]) {
@@ -81,10 +81,10 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
           const bracket = lineVal[pt++];
 
           if (bracketType === 1) {
-            tokens += '<span class="bracket-t1">' + bracket + "</span>";
+            tokens += "<span>" + bracket + "</span>";
             bracketStack.push(1);
           } else {
-            tokens += '<span class="bracket-t2">' + bracket + "</span>";
+            tokens += "<span>" + bracket + "</span>";
             bracketStack.push(2);
           }
         }
@@ -100,10 +100,10 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
           const bracket = lineVal[pt++];
 
           if (bracketType === 1) {
-            tokens += '<span class="bracket-t1">' + bracket + "</span>";
+            tokens += "<span>" + bracket + "</span>";
             bracketStack.push(1);
           } else {
-            tokens += '<span class="bracket-t2">' + bracket + "</span>";
+            tokens += "<span>" + bracket + "</span>";
             bracketStack.push(2);
           }
         }
@@ -121,7 +121,7 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
       case "%":
       case "!":
       case "?":
-        tokens += '<span class="operator"' + lineVal[pt++] + "</span>";
+        tokens += "<span>" + lineVal[pt++] + "</span>";
         break;
 
       case ".":
@@ -133,10 +133,10 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
       case "=":
         {
           if (lineVal[pt + 1] === ">") {
-            tokens += '<span class="keyword">=></span>';
+            tokens += "<span>=></span>";
             pt += 2;
           } else {
-            tokens += '<span class="operator"' + lineVal[pt++] + "</span>";
+            tokens += "<span>" + lineVal[pt++] + "</span>";
           }
         }
         break;
@@ -146,7 +146,7 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
           pt++;
           while (lineVal[pt] !== '"') pt++;
           const lexeme = lineVal.slice(basept, ++pt);
-          tokens += '<span class="str-literal">' + lexeme + "</span>";
+          tokens += "<span>" + lexeme + "</span>";
         }
         break;
 
@@ -155,11 +155,11 @@ export function renderTokensJS(lineVal: string, lineEl: HTMLElement) {
           pt++;
           while (lineVal[pt] !== "'") pt++;
           const lexeme = lineVal.slice(basept, ++pt);
-          tokens += '<span class="str-literal">' + lexeme + "</span>";
+          tokens += "<span>" + lexeme + "</span>";
         }
         break;
     }
   }
 
-  lineEl.innerHTML = "<span>" + tokens + "</span>";
+  lineEl.innerHTML = tokens;
 }

@@ -275,6 +275,10 @@ export class EditorCursor {
     const lineContainer = document.createElement("div");
     lineContainer.style.transform = `translate3d(0px, ${row * 16}px, 0px)`;
 
+    const tokenWrapper = document.createElement("span");
+    tokenWrapper.style.transform = "translate3d(0, 0, 0)";
+    lineContainer.appendChild(tokenWrapper);
+
     lineNumberContainer.appendChild(lineNumberValue);
 
     lineContainer.addEventListener("mousedown", (e) => {
@@ -330,7 +334,7 @@ export class EditorCursor {
 
         // @ts-ignore
         this.renderedLinesCache.set(lineContainer, [i, curr]);
-        renderTokensJS(curr.value, lineContainer);
+        renderTokensJS(curr.value, lineContainer.firstElementChild as HTMLElement);
 
         lineGroup.appendChild(lineContainer);
         lineNumberGroup.appendChild(lineNumberContainer);
@@ -391,7 +395,7 @@ export class EditorCursor {
           oldLineEl.firstElementChild.textContent = oldValues[1].value;
 
           // TODO: Do more research
-          // renderTokensJS(oldValues[1].value, oldLineEl);
+          renderTokensJS(oldValues[1].value, oldLineEl.firstElementChild as HTMLElement);
 
           oldLineNumberEl.style.transform = `translate3d(0px, ${(row + 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row + 1}`;
@@ -420,7 +424,7 @@ export class EditorCursor {
           oldLineEl.firstElementChild.textContent = oldValues[1].value;
 
           // TODO: Do more research
-          // renderTokensJS(oldValues[1].value, oldLineEl);
+          renderTokensJS(oldValues[1].value, oldLineEl.firstElementChild as HTMLElement);
 
           oldLineNumberEl.style.transform = `translate3d(0px, ${(row - 1) * 16}px, 0px)`;
           oldLineNumberEl.firstElementChild.textContent = `${row}`;
